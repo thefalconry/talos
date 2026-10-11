@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(Talos
-    VERSION 0.1.0
+    VERSION 0.1.1
     DESCRIPTION "Talos, a desktop and mobile client for the Talon agent"
     LANGUAGES C CXX)
 
@@ -110,6 +110,21 @@ if(ANDROID)
     # QtAndroidPrivate::startActivity, for the system speech recogniser.
     find_package(Qt6 REQUIRED COMPONENTS CorePrivate)
     target_link_libraries(talos PRIVATE Qt6::CorePrivate)
+
+    # Qt has no TLS of its own on Android: it loads these two at run time,
+    # and without them the app can neither make an https connection nor open
+    # a client certificate. packaging/android/build-openssl.sh builds them.
+    set(TALOS_ANDROID_OPENSSL_DIR "${CMAKE_SOURCE_DIR}/build-openssl/${ANDROID_ABI}"
+        CACHE PATH "Directory holding libssl_3.so and libcrypto_3.so for the target ABI")
+    foreach(lib libcrypto_3.so libssl_3.so)
+        if(NOT EXISTS "${TALOS_ANDROID_OPENSSL_DIR}/${lib}")
+            message(FATAL_ERROR
+                "${lib} is missing from ${TALOS_ANDROID_OPENSSL_DIR}. "
+                "Run packaging/android/build-openssl.sh, or set TALOS_ANDROID_OPENSSL_DIR.")
+        endif()
+        set_property(TARGET talos APPEND PROPERTY
+            QT_ANDROID_EXTRA_LIBS "${TALOS_ANDROID_OPENSSL_DIR}/${lib}")
+    endforeach()
 endif()
 # The ring is synthesised and played through Qt Multimedia on desktop;
 # Android uses the phone's own ringtone instead.
@@ -139,7 +154,7 @@ set_target_properties(talos PROPERTIES
     QT_ANDROID_PACKAGE_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/android
     QT_ANDROID_PACKAGE_NAME dev.talos.client
     QT_ANDROID_VERSION_NAME ${PROJECT_VERSION}
-    QT_ANDROID_VERSION_CODE 1
+    QT_ANDROID_VERSION_CODE 2
     QT_ANDROID_TARGET_SDK_VERSION 35
     QT_ANDROID_MIN_SDK_VERSION 28
 )

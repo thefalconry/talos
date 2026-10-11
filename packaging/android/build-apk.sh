@@ -36,10 +36,13 @@ version=$(sed -n 's/^    VERSION \([0-9.]*\)$/\1/p' "$root/CMakeLists.txt" | hea
     exit 1
 }
 
+openssl=$(ANDROID_SDK="$sdk" ANDROID_NDK="$ndk" "$root/packaging/android/build-openssl.sh")
+
 build="$root/build-android"
 "$qt_android/bin/qt-cmake" -S "$root" -B "$build" -G Ninja \
     -DQT_HOST_PATH="$qt_host" -DANDROID_SDK_ROOT="$sdk" -DANDROID_NDK_ROOT="$ndk" \
-    -DCMAKE_BUILD_TYPE=Release -DTALOS_BUILD_TESTS=OFF
+    -DCMAKE_BUILD_TYPE=Release -DTALOS_BUILD_TESTS=OFF \
+    -DTALOS_ANDROID_OPENSSL_DIR="$openssl"
 cmake --build "$build"
 
 unsigned="$build/android-build/build/outputs/apk/release/android-build-release-unsigned.apk"
@@ -51,5 +54,14 @@ out="$root/dist/talos-$version-arm64.apk"
 "$tools/apksigner" sign --ks "$keystore" --ks-key-alias "$alias" \
     --ks-pass "file:$passfile" --out "$out" "$out.aligned"
 rm -f "$out.aligned" "$out.idsig"
+# An APK without these still builds, installs and starts; it just can't
+# speak TLS. Refuse to hand one over.
+contents=$(unzip -Z1 "$out")
+for lib in libcrypto_3.so libssl_3.so; do
+    grep -qx "lib/arm64-v8a/$lib" <<<"$contents" || {
+        echo "$out does not contain $lib" >&2
+        exit 1
+    }
+done
 "$tools/apksigner" verify --print-certs "$out" | head -3
 echo "$out"

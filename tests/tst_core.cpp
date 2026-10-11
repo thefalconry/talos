@@ -974,6 +974,44 @@ private slots:
         QVERIFY(impostor.state()["streams"_L1].toArray().isEmpty());
     }
 
+    void certificateBundleFormats()
+    {
+        if (!haveOpenssl())
+            QSKIP("openssl is not available");
+        QTemporaryDir dir;
+        const auto openssl = [&](const QStringList &args) {
+            QProcess p;
+            p.setWorkingDirectory(dir.path());
+            p.start(u"openssl"_s, args);
+            return p.waitForFinished(30'000) && p.exitCode() == 0;
+        };
+        QVERIFY(openssl({u"req"_s, u"-x509"_s, u"-newkey"_s, u"rsa:2048"_s, u"-nodes"_s,
+                         u"-keyout"_s, u"k.pem"_s, u"-out"_s, u"c.pem"_s, u"-days"_s, u"2"_s,
+                         u"-subj"_s, u"/CN=talos-test"_s}));
+        const QStringList exportArgs{u"pkcs12"_s, u"-export"_s, u"-in"_s, u"c.pem"_s,
+                                     u"-inkey"_s, u"k.pem"_s, u"-passout"_s, u"pass:pw"_s};
+        const auto bytes = [&](const QString &name) {
+            QFile f(dir.filePath(name));
+            return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
+        };
+        QString why;
+
+        // What OpenSSL 3 writes by default: AES-256 with PBKDF2.
+        QVERIFY(openssl(exportArgs + QStringList{u"-out"_s, u"modern.p12"_s}));
+        QVERIFY(BridgeClient::checkPkcs12(bytes(u"modern.p12"_s), u"pw"_s, &why));
+
+        // What OpenSSL 1 wrote, and what `-legacy` still writes: RC2 and
+        // 3DES, which OpenSSL 3 only reads once its legacy provider is on.
+        if (!openssl(exportArgs + QStringList{u"-legacy"_s, u"-out"_s, u"legacy.p12"_s}))
+            QSKIP("this openssl cannot write a legacy bundle");
+        QVERIFY2(BridgeClient::checkPkcs12(bytes(u"legacy.p12"_s), u"pw"_s, &why),
+                 qPrintable(why));
+        QVERIFY(!BridgeClient::checkPkcs12(bytes(u"legacy.p12"_s), u"wrong"_s, &why));
+        QVERIFY(why.contains(u"password"_s));
+        // Turning the legacy provider on must not cost the modern one.
+        QVERIFY(BridgeClient::checkPkcs12(bytes(u"modern.p12"_s), u"pw"_s, &why));
+    }
+
     void mutualTlsAndBridgeLinks()
     {
         if (!haveOpenssl())

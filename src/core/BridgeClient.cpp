@@ -7,9 +7,11 @@
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QJsonDocument>
+#include <QLibrary>
 #include <QRegularExpression>
 #include <QSslCertificate>
 #include <QSslKey>
+#include <QSslSocket>
 
 namespace talos {
 
@@ -18,6 +20,45 @@ using namespace Qt::StringLiterals;
 namespace {
 
 const char kPinRejected[] = "talosPinRejected";
+
+/// Older certificate bundles, and anything exported with `openssl pkcs12
+/// -legacy`, are encrypted with RC2 or 3DES. OpenSSL 3 keeps those in a
+/// "legacy" provider that is off unless asked for. Qt loads OpenSSL at run
+/// time instead of linking it, so the provider is switched on the same way:
+/// through the library Qt already has open.
+bool enableLegacyCiphers()
+{
+    static const bool enabled = [] {
+        if (QSslSocket::activeBackend() != "openssl"_L1)
+            return false;
+#if defined(Q_OS_ANDROID)
+        QLibrary crypto(u"crypto_3"_s);
+#else
+        QLibrary crypto(u"crypto"_s, 3);
+#endif
+        using Load = void *(*)(void *, const char *);
+        const auto load = reinterpret_cast<Load>(crypto.resolve("OSSL_PROVIDER_load"));
+        // Naming any provider stops OpenSSL from supplying the default one
+        // by itself, so both are asked for.
+        return load && load(nullptr, "default") && load(nullptr, "legacy");
+    }();
+    return enabled;
+}
+
+bool readPkcs12(const QByteArray &p12, const QString &password, QSslKey *key,
+                QSslCertificate *cert, QList<QSslCertificate> *chain)
+{
+    const auto attempt = [&] {
+        QBuffer buf;
+        buf.setData(p12);
+        buf.open(QIODevice::ReadOnly);
+        return QSslCertificate::importPkcs12(&buf, key, cert, chain, password.toUtf8())
+            && !key->isNull() && !cert->isNull();
+    };
+    // Qt doesn't say why a bundle failed to open, so a wrong password also
+    // gets the second attempt.
+    return attempt() || (enableLegacyCiphers() && attempt());
+}
 
 /// TLS alerts a reverse proxy sends when the handshake lacked a client
 /// certificate it accepts (Caddy, Traefik, HAProxy, …).
@@ -98,18 +139,17 @@ QString BridgeClient::fingerprintOf(const QSslCertificate &cert)
 
 bool BridgeClient::checkPkcs12(const QByteArray &p12, const QString &password, QString *error)
 {
-    QBuffer buf;
-    buf.setData(p12);
-    buf.open(QIODevice::ReadOnly);
     QSslKey key;
     QSslCertificate cert;
     QList<QSslCertificate> chain;
-    if (QSslCertificate::importPkcs12(&buf, &key, &cert, &chain, password.toUtf8())
-        && !key.isNull() && !cert.isNull())
+    if (readPkcs12(p12, password, &key, &cert, &chain))
         return true;
     if (error) {
-        *error = u"Couldn't open the certificate. Check the password; a bundle made "
-                 "with OpenSSL 3 may need exporting again with `-legacy`."_s;
+        *error = QSslSocket::supportsSsl()
+            ? u"Couldn't open the certificate. Check the password, and that the file is "
+              "a PKCS#12 bundle (.p12 or .pfx)."_s
+            : u"This build of Talos has no TLS support, so it can't open certificates "
+              "or make https connections."_s;
     }
     return false;
 }
@@ -119,14 +159,10 @@ void BridgeClient::rebuildTls()
     m_tls = QSslConfiguration::defaultConfiguration();
     if (!m_endpoint.hasClientCert())
         return;
-    QBuffer buf;
-    buf.setData(m_endpoint.clientP12);
-    buf.open(QIODevice::ReadOnly);
     QSslKey key;
     QSslCertificate cert;
     QList<QSslCertificate> chain;
-    if (QSslCertificate::importPkcs12(&buf, &key, &cert, &chain,
-                                      m_endpoint.clientP12Password.toUtf8())) {
+    if (readPkcs12(m_endpoint.clientP12, m_endpoint.clientP12Password, &key, &cert, &chain)) {
         QList<QSslCertificate> full{cert};
         full += chain;
         m_tls.setLocalCertificateChain(full);

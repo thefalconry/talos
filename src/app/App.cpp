@@ -18,6 +18,7 @@
 #include <QQmlEngine>
 #include <QQuickWindow>
 #include <QSaveFile>
+#include <QSslSocket>
 #include <QStyleHints>
 
 namespace talos {
@@ -36,6 +37,15 @@ App::App(QObject *parent)
       m_voice(&m_store),
       m_screen(&m_store)
 {
+    // Without a TLS library nothing over https works. Say so once at start
+    // instead of leaving it to whichever request fails first.
+    if (QSslSocket::supportsSsl()) {
+        AppLog::info("tls", QSslSocket::sslLibraryVersionString());
+    } else {
+        AppLog::error("tls", u"no TLS library was found: https connections and client "
+                             "certificates will not work"_s);
+    }
+
     // Screen control is offered to the mesh only where the desktop has a
     // way to grant it.
     if (m_screen.available()) {
