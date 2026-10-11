@@ -10,6 +10,7 @@
 #   QT_HOST         desktop Qt of that version [$HOME/Qt/6.11.2/gcc_64]
 #   ANDROID_SDK     Android SDK               [$HOME/Android/Sdk]
 #   ANDROID_NDK     NDK                       [newest under $ANDROID_SDK/ndk]
+#   JAVA_HOME       a full JDK, for Gradle    [$HOME/Android/jdk if it exists]
 #   TALOS_KEYSTORE  signing keystore          [$HOME/.android/talos-release.keystore]
 #   TALOS_KEYSTORE_PASS_FILE  file holding its password
 #                                             [$TALOS_KEYSTORE.pass]
@@ -28,6 +29,10 @@ keystore=${TALOS_KEYSTORE:-$HOME/.android/talos-release.keystore}
 passfile=${TALOS_KEYSTORE_PASS_FILE:-$keystore.pass}
 alias=${TALOS_KEY_ALIAS:-talos}
 tools=$(ls -d "$sdk"/build-tools/* | sort -V | tail -1)
+# A distribution's default Java is often a runtime without a compiler.
+if [[ -z "${JAVA_HOME:-}" && -x "$HOME/Android/jdk/bin/javac" ]]; then
+    export JAVA_HOME="$HOME/Android/jdk"
+fi
 version=$(sed -n 's/^    VERSION \([0-9.]*\)$/\1/p' "$root/CMakeLists.txt" | head -1)
 
 [[ -f "$keystore" && -f "$passfile" ]] || {

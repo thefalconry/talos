@@ -63,14 +63,18 @@ export ANDROID_NDK_ROOT="$ndk"
 export PATH="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
 (
     cd "$src"
+    # Android has no versioned sonames, so Qt looks for libssl_3.so and
+    # libcrypto_3.so by exactly those names. A variant suffix is OpenSSL's
+    # own way to get them, with the soname and libssl's dependency to match.
+    printf 'my %%targets = (\n    "talos-%s" => { inherit_from => [ "%s" ], shlib_variant => "_3" },\n);\n' \
+        "$target" "$target" > talos.conf
     # no-module builds the legacy provider into libcrypto instead of as a
     # separate file, so older RC2/3DES certificate bundles can still be
     # opened (see enableLegacyCiphers in BridgeClient.cpp). The page-size
     # flag is what 16 KB-page devices require of every native library.
-    ./Configure "$target" -D__ANDROID_API__="$api" shared no-module no-tests no-docs \
-        -Wl,-z,max-page-size=16384 >&2
-    # Android has no versioned sonames; Qt looks for these exact names.
-    make -j"$(nproc)" SHLIB_VERSION_NUMBER= SHLIB_EXT=_3.so build_libs >&2
+    ./Configure --config=talos.conf "talos-$target" -D__ANDROID_API__="$api" \
+        shared no-module no-tests no-docs -Wl,-z,max-page-size=16384 >&2
+    make -j"$(nproc)" build_libs >&2
 )
 
 mkdir -p "$out"
