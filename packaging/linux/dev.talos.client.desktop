@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: GPL-2.0-only
+[Desktop Entry]
+Type=Application
+Name=Talos
+GenericName=AI agent client
+Comment=Chat with your Talon agent from the desktop
+Exec=talos %u
+Icon=dev.talos.client
+Terminal=false
+Categories=Network;Chat;
+MimeType=x-scheme-handler/talon;
+StartupWMClass=talos
+StartupNotify=true

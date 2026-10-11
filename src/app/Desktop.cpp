@@ -1,0 +1,266 @@
+// SPDX-License-Identifier: GPL-2.0-only
+#include "app/Desktop.h"
+
+#include "core/AppLog.h"
+#include "mesh/Platform.h"
+
+#include <QApplication>
+#include <QCoreApplication>
+#include <QDataStream>
+#include <QDir>
+#include <QFile>
+#include <QMenu>
+#include <QPainter>
+#include <QPainterPath>
+#include <QSettings>
+#include <QStandardPaths>
+#include <QSystemTrayIcon>
+#include <QTimer>
+#include <QtMath>
+
+#if defined(TALOS_HAVE_DBUS)
+#  include <QDBusConnection>
+#  include <QDBusInterface>
+#endif
+#if defined(TALOS_HAVE_MULTIMEDIA)
+#  include <QSoundEffect>
+#endif
+
+namespace talos {
+
+using namespace Qt::StringLiterals;
+
+Desktop::Desktop(QObject *parent) : QObject(parent) {}
+
+Desktop::~Desktop()
+{
+    delete m_menu;
+    if (!m_ringFile.isEmpty())
+        QFile::remove(m_ringFile);
+}
+
+QIcon Desktop::appIcon()
+{
+    QIcon icon;
+    for (const int size : {16, 24, 32, 48, 64, 128, 256}) {
+        QPixmap pm(size, size);
+        pm.fill(Qt::transparent);
+        QPainter p(&pm);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.scale(size / 64.0, size / 64.0);
+        // The same geometry as assets/talos.svg.
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(0x1F, 0x1D, 0x1A));
+        p.drawRoundedRect(QRectF(2, 2, 60, 60), 15, 15);
+        QPainterPath talon;
+        talon.moveTo(17, 20);
+        talon.cubicTo(30, 16, 44, 22, 47, 36);
+        talon.cubicTo(48, 42, 45, 47, 40, 49);
+        talon.cubicTo(43, 42, 40, 35, 33, 32);
+        talon.cubicTo(36, 38, 33, 44, 27, 46);
+        talon.cubicTo(30, 39, 26, 33, 19, 31);
+        talon.cubicTo(22, 28, 22, 24, 17, 20);
+        talon.closeSubpath();
+        p.setBrush(QColor(0xE0, 0x7A, 0x45));
+        p.drawPath(talon);
+        p.end();
+        icon.addPixmap(pm);
+    }
+    return icon;
+}
+
+bool Desktop::trayAvailable() const
+{
+    return !platform::isMobile() && QSystemTrayIcon::isSystemTrayAvailable();
+}
+
+void Desktop::showTray(bool show, const QString &tooltip)
+{
+    if (!trayAvailable())
+        return;
+    if (!show) {
+        if (m_tray)
+            m_tray->hide();
+        return;
+    }
+    if (!m_tray) {
+        m_tray = new QSystemTrayIcon(appIcon(), this);
+        m_menu = new QMenu;
+        connect(m_menu->addAction(u"Open Talos"_s), &QAction::triggered, this,
+                &Desktop::activateRequested);
+        connect(m_menu->addAction(u"New chat"_s), &QAction::triggered, this,
+                &Desktop::newChatRequested);
+        m_menu->addSeparator();
+        connect(m_menu->addAction(u"Quit"_s), &QAction::triggered, this, &Desktop::quitRequested);
+        m_tray->setContextMenu(m_menu);
+        connect(m_tray, &QSystemTrayIcon::activated, this,
+                [this](QSystemTrayIcon::ActivationReason reason) {
+            if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick)
+                emit activateRequested();
+        });
+        connect(m_tray, &QSystemTrayIcon::messageClicked, this, &Desktop::activateRequested);
+    }
+    m_tray->setToolTip(tooltip);
+    m_tray->show();
+}
+
+void Desktop::setTrayTooltip(const QString &tooltip)
+{
+    if (m_tray)
+        m_tray->setToolTip(tooltip);
+}
+
+void Desktop::notify(const QString &title, const QString &body)
+{
+    if (platform::notifyNative(title, body))
+        return;
+#if defined(TALOS_HAVE_DBUS)
+    // The desktop notification service works whether or not there is a tray.
+    QDBusInterface service(u"org.freedesktop.Notifications"_s, u"/org/freedesktop/Notifications"_s,
+                           u"org.freedesktop.Notifications"_s, QDBusConnection::sessionBus());
+    if (service.isValid()) {
+        service.asyncCall(u"Notify"_s, u"Talos"_s, uint(0), u"dev.talos.client"_s, title, body,
+                          QStringList(), QVariantMap{{u"desktop-entry"_s, u"dev.talos.client"_s}},
+                          8000);
+        return;
+    }
+#endif
+    if (m_tray && m_tray->isVisible() && QSystemTrayIcon::supportsMessages())
+        m_tray->showMessage(title, body, appIcon(), 8000);
+}
+
+void Desktop::ring(const QString &message)
+{
+    notify(u"Talon is looking for this device"_s,
+           message.isEmpty() ? u"Someone asked Talon to ring it."_s : message);
+    if (platform::ringNative())
+        return;
+#if defined(TALOS_HAVE_MULTIMEDIA)
+    if (m_ringFile.isEmpty()) {
+        // Eight two-tone chirps, synthesised once: no audio asset to ship.
+        constexpr int rate = 22050;
+        QByteArray pcm;
+        QDataStream samples(&pcm, QIODevice::WriteOnly);
+        samples.setByteOrder(QDataStream::LittleEndian);
+        for (int beep = 0; beep < 8; ++beep) {
+            for (int i = 0; i < rate * 45 / 100; ++i) {
+                const double t = double(i) / rate;
+                const bool on = t < 0.28;
+                const double freq = t < 0.14 ? 880.0 : 1175.0;
+                const double envelope = on ? qMin(1.0, qMin(t, 0.28 - t) * 60.0) : 0.0;
+                samples << qint16(envelope * 0.6 * 32767 * qSin(2 * M_PI * freq * t));
+            }
+        }
+        QByteArray wav;
+        QDataStream out(&wav, QIODevice::WriteOnly);
+        out.setByteOrder(QDataStream::LittleEndian);
+        out.writeRawData("RIFF", 4);
+        out << quint32(36 + pcm.size());
+        out.writeRawData("WAVEfmt ", 8);
+        out << quint32(16) << quint16(1) << quint16(1) << quint32(rate) << quint32(rate * 2)
+            << quint16(2) << quint16(16);
+        out.writeRawData("data", 4);
+        out << quint32(pcm.size());
+        wav += pcm;
+        const QString path = QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
+            .filePath(u"talos-ring-%1.wav"_s.arg(QCoreApplication::applicationPid()));
+        QFile f(path);
+        if (f.open(QIODevice::WriteOnly)) {
+            f.write(wav);
+            m_ringFile = path;
+        }
+    }
+    if (!m_ringFile.isEmpty()) {
+        delete m_ringPlayer;
+        auto *effect = new QSoundEffect(this);
+        effect->setSource(QUrl::fromLocalFile(m_ringFile));
+        effect->setVolume(1.0);
+        effect->play();
+        m_ringPlayer = effect;
+        return;
+    }
+#endif
+    for (int i = 0; i < 8; ++i)
+        QTimer::singleShot(i * 450, this, [] { QApplication::beep(); });
+}
+
+// ── Launch at login ─────────────────────────────────────────────────────────
+
+bool Desktop::autostartSupported() const
+{
+    return !platform::isMobile() && !platform::isSandboxed();
+}
+
+QString Desktop::autostartPath() const
+{
+#if defined(Q_OS_MACOS)
+    return QDir::home().filePath(u"Library/LaunchAgents/dev.talos.client.plist"_s);
+#elif defined(Q_OS_LINUX)
+    return QDir(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation))
+        .filePath(u"autostart/dev.talos.client.desktop"_s);
+#else
+    return {};
+#endif
+}
+
+bool Desktop::autostart() const
+{
+#if defined(Q_OS_WIN)
+    const QSettings run(u"HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"_s,
+                        QSettings::NativeFormat);
+    return run.contains(u"Talos"_s);
+#else
+    const QString path = autostartPath();
+    return !path.isEmpty() && QFile::exists(path);
+#endif
+}
+
+void Desktop::setAutostart(bool on)
+{
+    if (!autostartSupported())
+        return;
+    // Inside an AppImage the binary's own path is a mount that changes
+    // every launch; the AppImage file is the thing to start.
+    QString exe = qEnvironmentVariable("APPIMAGE");
+    if (exe.isEmpty())
+        exe = QCoreApplication::applicationFilePath();
+#if defined(Q_OS_WIN)
+    QSettings run(u"HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"_s,
+                  QSettings::NativeFormat);
+    if (on)
+        run.setValue(u"Talos"_s, u"\"%1\" --hidden"_s.arg(QDir::toNativeSeparators(exe)));
+    else
+        run.remove(u"Talos"_s);
+#else
+    const QString path = autostartPath();
+    if (!on) {
+        QFile::remove(path);
+        return;
+    }
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    QFile f(path);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        AppLog::warn("desktop", u"couldn't write %1"_s.arg(path));
+        return;
+    }
+#  if defined(Q_OS_MACOS)
+    f.write(u"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+            "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" "
+            "\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
+            "<plist version=\"1.0\"><dict>\n"
+            "  <key>Label</key><string>dev.talos.client</string>\n"
+            "  <key>ProgramArguments</key><array><string>%1</string>"
+            "<string>--hidden</string></array>\n"
+            "  <key>RunAtLoad</key><true/>\n"
+            "</dict></plist>\n"_s.arg(exe.toHtmlEscaped()).toUtf8());
+#  else
+    QString quoted = exe;
+    quoted.replace(u'\\', u"\\\\"_s).replace(u'"', u"\\\""_s);
+    f.write(u"[Desktop Entry]\nType=Application\nName=Talos\n"
+            "Exec=\"%1\" --hidden\nIcon=dev.talos.client\nX-GNOME-Autostart-enabled=true\n"_s
+                .arg(quoted).toUtf8());
+#  endif
+#endif
+}
+
+} // namespace talos
