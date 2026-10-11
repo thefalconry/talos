@@ -49,6 +49,7 @@ plugins and skills, and lets this computer join Talon's device mesh.
 %cmake -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DTALOS_BUILD_TESTS=OFF \
+    -DCMAKE_SKIP_INSTALL_RPATH=ON \
     %{?qt_prefix:-DCMAKE_PREFIX_PATH=%{qt_prefix}}
 %cmake_build
 

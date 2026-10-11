@@ -96,7 +96,10 @@ endforeach()
 qt_add_qml_module(talos
     URI Talos
     VERSION 1.0
-    NO_RESOURCE_TARGET_PATH
+    # Under the engine's default import path (qrc:/qt/qml/Talos), so the
+    # module is found wherever the program is installed, not only when its
+    # build directory happens to sit beside it.
+    RESOURCE_PREFIX /qt/qml
     QML_FILES ${TALON_QML_FILES}
 )
 
