@@ -46,8 +46,10 @@ unsigned="$build/android-build/build/outputs/apk/release/android-build-release-u
 mkdir -p "$root/dist"
 out="$root/dist/talos-$version-arm64.apk"
 "$tools/zipalign" -f -p 4 "$unsigned" "$out.aligned"
+# A PKCS#12 keystore protects its key with the store's own password, which
+# apksigner tries for the key when no separate one is given.
 "$tools/apksigner" sign --ks "$keystore" --ks-key-alias "$alias" \
-    --ks-pass "file:$passfile" --key-pass "file:$passfile" --out "$out" "$out.aligned"
+    --ks-pass "file:$passfile" --out "$out" "$out.aligned"
 rm -f "$out.aligned" "$out.idsig"
 "$tools/apksigner" verify --print-certs "$out" | head -3
 echo "$out"
