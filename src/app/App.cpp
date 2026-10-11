@@ -606,6 +606,14 @@ void App::showWindow()
     m_window->requestActivate();
 }
 
+bool App::moveToBackground()
+{
+    if (!platform::moveToBackground())
+        return false;
+    m_session.persist();
+    return true;
+}
+
 void App::quit()
 {
     m_quitting = true;

@@ -46,8 +46,15 @@ Rectangle {
 
     color: Theme.bg
 
-    // Eat clicks so nothing underneath reacts.
-    MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons; onWheel: wheel => wheel.accepted = true }
+    /// One step back inside settings on a phone: from a section to the
+    /// list. False when there is no further step, and back leaves settings.
+    function back() {
+        if (narrow && !showList) {
+            showList = true
+            return true
+        }
+        return false
+    }
 
     RowLayout {
         anchors.fill: parent

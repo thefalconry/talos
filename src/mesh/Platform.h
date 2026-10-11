@@ -28,6 +28,10 @@ bool isSandboxed();
 
 /// Keep screenshots and the app switcher from showing the window (Android).
 void setSecureWindow(bool on);
+/// Send the app to the background without ending it, the way the back
+/// gesture leaves an app on a phone (Android). False where there is no such
+/// thing and the caller should close the window instead.
+bool moveToBackground();
 /// Post a system notification on platforms without a tray (Android).
 bool notifyNative(const QString &title, const QString &body);
 

@@ -16,6 +16,7 @@
 #include <QJsonObject>
 #include <QLocalServer>
 #include <QLocalSocket>
+#include <QMouseEvent>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQmlExpression>
@@ -54,6 +55,9 @@ bool handOver(const QString &link)
 /// Drive the UI from a JSON script and save screenshots: a development aid
 /// for checking layouts and producing documentation images.
 ///   [{"wait": 800, "eval": "root.openSettings()", "shot": "settings.png"}]
+/// A step may also carry "click": [x, y] (a left click at that point of the
+/// window) or "key": "back" (the Android back key: a key event, then a close
+/// request if nothing took it). Both run before the step's "eval".
 void runScript(const QString &file, QQmlApplicationEngine *engine, talos::App *app)
 {
     QFile f(file);
@@ -72,6 +76,25 @@ void runScript(const QString &file, QQmlApplicationEngine *engine, talos::App *a
         }
         const QJsonObject step = steps->at((*index)++).toObject();
         QTimer::singleShot(step["wait"_L1].toInt(300), app, [=] {
+            auto *window = qobject_cast<QQuickWindow *>(engine->rootObjects().first());
+            const QJsonArray click = step["click"_L1].toArray();
+            if (window && click.size() == 2) {
+                const QPointF at(click[0].toDouble(), click[1].toDouble());
+                QMouseEvent press(QEvent::MouseButtonPress, at, window->mapToGlobal(at),
+                                  Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+                QCoreApplication::sendEvent(window, &press);
+                QMouseEvent release(QEvent::MouseButtonRelease, at, window->mapToGlobal(at),
+                                    Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+                QCoreApplication::sendEvent(window, &release);
+            }
+            if (window && step["key"_L1].toString() == "back"_L1) {
+                QKeyEvent press(QEvent::KeyPress, Qt::Key_Back, Qt::NoModifier);
+                QCoreApplication::sendEvent(window, &press);
+                QKeyEvent release(QEvent::KeyRelease, Qt::Key_Back, Qt::NoModifier);
+                QCoreApplication::sendEvent(window, &release);
+                if (!press.isAccepted() && !release.isAccepted())
+                    window->close();
+            }
             const QString code = step["eval"_L1].toString();
             if (!code.isEmpty()) {
                 QObject *root = engine->rootObjects().first();

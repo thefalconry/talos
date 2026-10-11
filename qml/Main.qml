@@ -36,6 +36,13 @@ C.ApplicationWindow {
     }
 
     onClosing: close => {
+        // A phone's back gesture ends up here when nothing on screen took
+        // it. It means one step back, and at the chat list it means leave
+        // the app running in the background, not quit it.
+        if (App.mobile && (goBack() || App.moveToBackground())) {
+            close.accepted = false
+            return
+        }
         if (!App.mobile && visibility === Window.Windowed) {
             App.prefs.windowWidth = width
             App.prefs.windowHeight = height
@@ -59,6 +66,34 @@ C.ApplicationWindow {
         // Asked for a particular section: on a phone, go straight to it.
         settingsDirect = !!section
         settingsOpen = true
+    }
+
+    /// One step back: out of a settings section, out of settings, out of
+    /// the open chat. False at the chat list, where there is nowhere left.
+    function goBack() {
+        if (App.lock.locked)
+            return false
+        // An open sheet or menu normally takes the back key itself. If one
+        // didn't, close it when it can be closed; either way, back never
+        // reaches past it to the page underneath.
+        for (const popup of [viewer, voiceScreen, commandPalette, shortcuts, renameSheet, confirmSheet]) {
+            if (popup.visible) {
+                popup.close()
+                return true
+            }
+        }
+        if (C.Overlay.overlay.visible)
+            return true
+        if (settingsOpen) {
+            if (!settingsLoader.item.back())
+                settingsOpen = false
+            return true
+        }
+        if (narrow && App.session.selectedChatId !== "") {
+            App.session.clearSelection()
+            return true
+        }
+        return false
     }
 
     function openPalette() { commandPalette.open() }
@@ -127,36 +162,45 @@ C.ApplicationWindow {
         anchors.fill: parent
         visible: App.store.hasProfile
 
-        // Wide: the chat list sits beside the conversation.
-        Sidebar {
-            id: sidebar
-            visible: !root.narrow
-            width: root.sidebarOpen ? Math.min(App.prefs.sidebarWidth, root.width * 0.42) : 0
-            anchors.left: parent.left
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
-            clip: true
-
-            Behavior on width { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
-        }
-
-        ChatPage {
-            id: chatPage
-            anchors.left: root.narrow ? parent.left : sidebar.right
-            anchors.right: parent.right
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
-            visible: !root.narrow || App.session.selectedChatId !== ""
-        }
-
-        // Narrow: the chat list is the screen until a chat is opened.
-        Sidebar {
+        // Hidden while settings covers it. Covering it is not enough: a tap
+        // on a settings row would also reach the chat row underneath, whose
+        // handler doesn't care that something opaque is drawn on top.
+        Item {
             anchors.fill: parent
-            visible: root.narrow && App.session.selectedChatId === ""
-            fullScreen: true
+            visible: !root.settingsOpen
+
+            // Wide: the chat list sits beside the conversation.
+            Sidebar {
+                id: sidebar
+                visible: !root.narrow
+                width: root.sidebarOpen ? Math.min(App.prefs.sidebarWidth, root.width * 0.42) : 0
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                clip: true
+
+                Behavior on width { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+            }
+
+            ChatPage {
+                id: chatPage
+                anchors.left: root.narrow ? parent.left : sidebar.right
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                visible: !root.narrow || App.session.selectedChatId !== ""
+            }
+
+            // Narrow: the chat list is the screen until a chat is opened.
+            Sidebar {
+                anchors.fill: parent
+                visible: root.narrow && App.session.selectedChatId === ""
+                fullScreen: true
+            }
         }
 
         Loader {
+            id: settingsLoader
             anchors.fill: parent
             active: root.settingsOpen
             visible: active

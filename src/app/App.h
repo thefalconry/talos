@@ -122,6 +122,9 @@ public:
     Q_INVOKABLE QString mapLink(double lat, double lon) const;
     Q_INVOKABLE void resolveApproval(int id, bool allow);
     Q_INVOKABLE void showWindow();
+    /// Leave the app running behind whatever was open before it (a phone's
+    /// "back" at the top level). False where the platform has no such thing.
+    Q_INVOKABLE bool moveToBackground();
     Q_INVOKABLE void quit();
     /// Render the window to a PNG (development and documentation).
     Q_INVOKABLE bool grab(const QString &path);

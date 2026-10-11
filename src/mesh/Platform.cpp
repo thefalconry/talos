@@ -163,6 +163,19 @@ bool isSandboxed()
         || qEnvironmentVariableIsSet("SNAP");
 }
 
+bool moveToBackground()
+{
+#if defined(Q_OS_ANDROID)
+    QNativeInterface::QAndroidApplication::runOnAndroidMainThread([] {
+        const QJniObject activity = QNativeInterface::QAndroidApplication::context();
+        activity.callMethod<jboolean>("moveTaskToBack", "(Z)Z", jboolean(true));
+    });
+    return true;
+#else
+    return false;
+#endif
+}
+
 void setSecureWindow(bool on)
 {
 #if defined(Q_OS_ANDROID)
