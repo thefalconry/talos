@@ -16,4 +16,6 @@ VectorPath {
     path: Theme.icons[name] || ""
     color: Theme.textSecondary
     weight: 1.7
+    // Decoration: whatever it sits in carries the name.
+    Accessible.ignored: true
 }

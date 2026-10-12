@@ -110,6 +110,19 @@ Rectangle {
                                                       || page.sections[index - 1].group !== modelData.group
                         readonly property bool on: !page.narrow && modelData.id === page.current.id
 
+                        Accessible.role: Accessible.PageTab
+                        Accessible.name: modelData.label
+                        Accessible.selected: on
+                        Accessible.onPressAction: {
+                            page.win.settingsSection = modelData.id
+                            page.showList = false
+                        }
+                        activeFocusOnTab: true
+                        Keys.onReturnPressed: {
+                            page.win.settingsSection = modelData.id
+                            page.showList = false
+                        }
+
                         width: nav.width
                         height: (heads ? 32 : 0) + (page.narrow ? 48 : 38)
 

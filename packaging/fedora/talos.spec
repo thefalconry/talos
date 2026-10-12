@@ -24,6 +24,7 @@ BuildRequires:  qt6-qtdeclarative-devel
 BuildRequires:  qt6-qtmultimedia-devel
 BuildRequires:  qt6-qtspeech-devel
 BuildRequires:  qt6-qtpositioning-devel
+BuildRequires:  qt6-linguist
 
 # QML modules are loaded at run time, so nothing links against them.
 Requires:       qt6-qtdeclarative%{?_isa} >= 6.8

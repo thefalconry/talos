@@ -190,6 +190,11 @@ C.Popup {
                 id: hit
                 required property int index
                 readonly property var data_: cmd.rows[index] || ({})
+
+                Accessible.role: Accessible.ListItem
+                Accessible.name: (data_.label || "") + (data_.detail ? ", " + data_.detail : "")
+                Accessible.selected: index === cmd.current
+                Accessible.onPressAction: cmd.run(index)
                 width: results.width
                 height: data_.detail ? 50 : 38
 

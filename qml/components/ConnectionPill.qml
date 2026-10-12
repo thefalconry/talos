@@ -22,6 +22,13 @@ Item {
 
     implicitHeight: 34
 
+    Accessible.role: Accessible.Button
+    Accessible.name: qsTr("Connection: %1").arg(label)
+    Accessible.onPressAction: clicked()
+    activeFocusOnTab: true
+    Keys.onReturnPressed: clicked()
+    Keys.onSpacePressed: clicked()
+
     Rectangle {
         anchors.fill: parent
         radius: 9

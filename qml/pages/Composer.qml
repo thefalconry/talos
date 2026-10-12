@@ -346,6 +346,7 @@ Item {
 
                     C.TextArea.flickable: C.TextArea {
                         id: input
+                        Accessible.name: qsTr("Message")
                         placeholderText: composer.running
                                          ? qsTr("Queue a follow-up…")
                                          : qsTr("Message %1").arg(App.session.botName)

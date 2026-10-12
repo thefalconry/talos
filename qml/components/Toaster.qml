@@ -28,6 +28,10 @@ Item {
         opacity: 0
         visible: opacity > 0
 
+        // Announced when it appears, like the alert it is.
+        Accessible.role: Accessible.AlertMessage
+        Accessible.name: label.text
+
         Behavior on opacity { NumberAnimation { duration: 160 } }
 
         Text {

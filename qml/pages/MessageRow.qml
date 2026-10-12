@@ -29,6 +29,10 @@ Item {
     readonly property bool mine: role === "user"
     readonly property bool note: role === "system"
 
+    Accessible.role: Accessible.StaticText
+    Accessible.name: note ? text
+                     : (mine ? qsTr("You: %1") : qsTr("%1: %2").arg(App.session.botName)).arg(text)
+
     implicitHeight: body.implicitHeight
 
     Column {

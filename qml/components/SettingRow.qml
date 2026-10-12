@@ -21,11 +21,23 @@ Item {
     implicitHeight: Math.max(52, layout.implicitHeight + 22)
     opacity: enabled ? 1 : 0.5
 
+    // A row that does something is a button to a screen reader and to the
+    // keyboard; one that only says something is read out.
+    Accessible.role: clickable ? Accessible.Button : Accessible.StaticText
+    Accessible.name: title
+    Accessible.description: subtitle
+    Accessible.onPressAction: if (clickable) clicked()
+    activeFocusOnTab: clickable
+    Keys.onReturnPressed: if (clickable) clicked()
+    Keys.onSpacePressed: if (clickable) clicked()
+
     Rectangle {
         anchors.fill: parent
         anchors.margins: 1
         radius: Theme.radius
         color: tap.pressed ? Theme.pressed : hover.hovered && root.clickable ? Theme.hover : "transparent"
+        border.width: root.activeFocus ? 2 : 0
+        border.color: Theme.accent
     }
     Rectangle {
         visible: !root.first

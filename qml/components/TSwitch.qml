@@ -5,6 +5,16 @@ import QtQuick.Templates as T
 T.Switch {
     id: control
 
+    /// What a screen reader calls it: the row it sits in, unless told.
+    property string label: {
+        for (let p = parent; p; p = p.parent) {
+            if (typeof p.title === "string" && p.title !== "")
+                return p.title
+        }
+        return ""
+    }
+    Accessible.name: label
+
     implicitWidth: 40
     implicitHeight: 24
     hoverEnabled: true

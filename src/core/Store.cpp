@@ -49,6 +49,7 @@ QVariantMap defaultPrefs()
         {u"sidebarOpen"_s, true},
         {u"sidebarWidth"_s, 292},
         {u"showReasoning"_s, true},
+        {u"language"_s, QString()},          // "" follows the system; else en, es, hi
         // Composer
         {u"sendOnEnter"_s, true},
         // Notifications

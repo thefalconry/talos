@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include "core/Models.h"
 
+#include <QCoreApplication>
+
 #include "core/Markdown.h"
 
 #include <QDateTime>
@@ -354,13 +356,13 @@ QString ChatListModel::sectionFor(qint64 lastActive)
     const QDate today = QDate::currentDate();
     const qint64 age = day.daysTo(today);
     if (age <= 0)
-        return u"Today"_s;
+        return QCoreApplication::translate("Sidebar", "Today");
     if (age == 1)
-        return u"Yesterday"_s;
+        return QCoreApplication::translate("Sidebar", "Yesterday");
     if (age < 7)
-        return u"Previous 7 days"_s;
+        return QCoreApplication::translate("Sidebar", "Previous 7 days");
     if (age < 30)
-        return u"Previous 30 days"_s;
+        return QCoreApplication::translate("Sidebar", "Previous 30 days");
     if (day.year() == today.year())
         return QLocale().monthName(day.month());
     return QString::number(day.year());
@@ -380,7 +382,7 @@ QVariant ChatListModel::data(const QModelIndex &index, int role) const
         // Pinned chats lead the list under a heading of their own, except
         // in the archive, which is one list by date.
         if (isPinned && isPinned(c) && !(isArchived && isArchived(c)))
-            return u"Pinned"_s;
+            return QCoreApplication::translate("Sidebar", "Pinned");
         return sectionFor(c.lastActive);
     case UnreadRole: return isUnread ? isUnread(c) : false;
     case RunningRole: return isRunning ? isRunning(c) : false;

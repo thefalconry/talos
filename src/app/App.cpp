@@ -141,6 +141,8 @@ App::App(QObject *parent)
 
     connect(&m_desktop, &Desktop::activateRequested, this, &App::showWindow);
     connect(&m_desktop, &Desktop::quitRequested, this, &App::quit);
+    // Before any of the interface is built.
+    applyLanguage();
     connect(&m_shortcut, &GlobalShortcut::activated, this, &App::quickAskRequested);
     // The desktop remembers the keys; asking again at start is how a
     // session gets them back.
@@ -168,6 +170,8 @@ App::App(QObject *parent)
             platform::setSecureWindow(m_store.prefBool(key));
         else if (key == "meshSharing"_L1 || key == "meshBackground"_L1)
             updateKeepAlive();
+        else if (key == "language"_L1)
+            applyLanguage();
         else if (key == "quickShortcut"_L1)
             m_store.prefBool(key) ? m_shortcut.bind() : m_shortcut.release();
         // Whether credentials may stay sealed depends on these two.
@@ -732,6 +736,30 @@ void App::showWindow()
         m_window->showNormal();
     m_window->raise();
     m_window->requestActivate();
+}
+
+QVariantList App::languages() const
+{
+    return {
+        QVariantMap{{u"code"_s, QString()}, {u"name"_s, tr("System")}},
+        QVariantMap{{u"code"_s, u"en"_s}, {u"name"_s, u"English"_s}},
+        QVariantMap{{u"code"_s, u"es"_s}, {u"name"_s, u"Español"_s}},
+        QVariantMap{{u"code"_s, u"hi"_s}, {u"name"_s, u"हिन्दी"_s}},
+    };
+}
+
+void App::applyLanguage()
+{
+    const QString chosen = m_store.prefString(u"language"_s);
+    QCoreApplication::removeTranslator(&m_translator);
+    const QLocale locale = chosen.isEmpty() ? QLocale() : QLocale(chosen);
+    // English is what the source says; a missing file means the same.
+    if (locale.language() != QLocale::English
+        && m_translator.load(locale, u"talos"_s, u"_"_s, u":/i18n"_s))
+        QCoreApplication::installTranslator(&m_translator);
+    if (m_engine)
+        m_engine->retranslate();
+    m_session.refreshChatList();
 }
 
 void App::updateKeepAlive()

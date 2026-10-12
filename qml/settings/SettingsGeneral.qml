@@ -6,6 +6,21 @@ Pane {
     id: pane
 
     Card {
+        title: qsTr("Language")
+
+        SettingRow {
+            first: true
+            title: qsTr("Language of the interface")
+            subtitle: qsTr("Talon's own replies and messages are not translated.")
+            Segmented {
+                value: App.prefs.language
+                options: App.languages().map(l => ({ value: l.code, label: l.name }))
+                onChosen: value => App.prefs.language = value
+            }
+        }
+    }
+
+    Card {
         title: qsTr("Writing")
 
         SettingRow {

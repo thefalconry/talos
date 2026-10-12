@@ -37,6 +37,15 @@ Rectangle {
                 border.width: on ? 1 : 0
                 border.color: Theme.border
 
+                Accessible.role: Accessible.RadioButton
+                Accessible.name: modelData.label
+                Accessible.checkable: true
+                Accessible.checked: on
+                Accessible.onPressAction: root.chosen(modelData.value)
+                activeFocusOnTab: true
+                Keys.onSpacePressed: root.chosen(modelData.value)
+                Keys.onReturnPressed: root.chosen(modelData.value)
+
                 Text {
                     id: label
                     anchors.centerIn: parent

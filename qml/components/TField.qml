@@ -5,6 +5,8 @@ import QtQuick.Controls.Basic as C
 C.TextField {
     id: control
 
+    Accessible.name: placeholderText
+
     property bool invalid: false
 
     implicitHeight: 38

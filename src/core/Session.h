@@ -139,6 +139,8 @@ public:
     Q_INVOKABLE bool isPinned(const QString &chatId) const;
     Q_INVOKABLE bool isArchived(const QString &chatId) const;
     int archivedCount() const;
+    /// Have the chat list read its headings again (the language changed).
+    void refreshChatList() { m_chats.touch(); }
     /// The text of the open chat's most recent message from the user.
     Q_INVOKABLE QString lastUserMessage() const;
     Q_INVOKABLE void refresh();

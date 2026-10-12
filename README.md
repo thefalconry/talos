@@ -31,6 +31,10 @@ daemon's protocol definition rather than ported from the Flutter companion.
   command's arguments. On a daemon too old to have one, the app carries out
   `/stop`, `/reset`, `/model`, `/effort` and `/pulse` itself
 - Search every chat (Ctrl+K), or only the open one (Ctrl+F)
+- Pin chats to the top, archive the ones in the way, save a conversation
+  to a file, edit a message and send it again
+- Formulas written in LaTeX are shown as readable text (`α² + 1/n`, not
+  typeset), and Mermaid flowcharts are drawn
 - Showing a reply never contacts another server: an image in a reply
   becomes a link, HTML is shown as text, and the window's own network
   access is switched off. Attachments that are programs or scripts are

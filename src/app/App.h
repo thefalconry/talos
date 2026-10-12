@@ -16,6 +16,7 @@
 
 #include <QColor>
 #include <QJSValue>
+#include <QTranslator>
 #include <QObject>
 #include <QUrl>
 
@@ -134,6 +135,8 @@ public:
     /// Leave the app running behind whatever was open before it (a phone's
     /// "back" at the top level). False where the platform has no such thing.
     Q_INVOKABLE bool moveToBackground();
+    /// The languages the interface comes in, as `[{code, name}]`.
+    Q_INVOKABLE QVariantList languages() const;
     /// A starting file name for a save dialog, in the documents folder.
     Q_INVOKABLE QUrl suggestedFile(const QString &title, const QString &suffix) const;
     /// A file dialog's URL as a path on this device.
@@ -164,6 +167,8 @@ private:
                    bool fromAssistant);
     void updateTray();
     void updateKeepAlive();
+    void applyLanguage();
+    QTranslator m_translator;
     /// Set while the lock is being removed, so credentials are written back
     /// unsealed although the lock still exists for a moment.
     bool m_unsealing = false;

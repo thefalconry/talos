@@ -133,6 +133,16 @@ Rectangle {
                 required property bool archived
                 readonly property bool current: chatId === App.session.selectedChatId
 
+                Accessible.role: Accessible.ListItem
+                Accessible.name: unread ? qsTr("%1, unread").arg(title) : title
+                Accessible.description: preview
+                Accessible.selected: current
+                Accessible.onPressAction: root.win.openChat(chatId)
+                activeFocusOnTab: true
+                Keys.onReturnPressed: root.win.openChat(chatId)
+                Keys.onSpacePressed: root.win.openChat(chatId)
+                Keys.onMenuPressed: menu.popup()
+
                 width: list.width
                 height: root.fullScreen ? 58 : 38
 

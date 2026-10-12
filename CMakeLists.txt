@@ -143,6 +143,18 @@ if(TARGET Qt6::TextToSpeech)
     target_compile_definitions(talos PRIVATE TALOS_HAVE_TTS)
 endif()
 
+# Translations: compiled into the program, so a package is still one file.
+# Without Qt's linguist tools the app simply ships in English.
+find_package(Qt6 QUIET OPTIONAL_COMPONENTS LinguistTools)
+if(TARGET Qt6::lrelease)
+    qt_add_translations(TARGETS talos
+        TS_FILES i18n/talos_es.ts i18n/talos_hi.ts
+        RESOURCE_PREFIX /i18n
+        LUPDATE_OPTIONS -no-obsolete -locations none)
+else()
+    message(STATUS "Qt linguist tools not found: building without translations")
+endif()
+
 # QML is shipped as bytecode, not compiled to C++. The compiled form calls
 # into Qt's private API, which ties a binary to one exact Qt build; bytecode
 # only needs the public one, so the same package keeps working when the
