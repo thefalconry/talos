@@ -129,6 +129,8 @@ Rectangle {
                 required property bool unread
                 required property bool running
                 required property bool queued
+                required property bool pinned
+                required property bool archived
                 readonly property bool current: chatId === App.session.selectedChatId
 
                 width: list.width
@@ -217,6 +219,18 @@ Rectangle {
                         onTriggered: root.win.renameChat(row.chatId, row.title)
                     }
                     TMenuItem {
+                        visible: !row.archived
+                        height: visible ? implicitHeight : 0
+                        text: row.pinned ? qsTr("Unpin") : qsTr("Pin to the top")
+                        iconName: "pin"
+                        onTriggered: App.session.setPinned(row.chatId, !row.pinned)
+                    }
+                    TMenuItem {
+                        text: row.archived ? qsTr("Move out of the archive") : qsTr("Archive")
+                        iconName: "folder"
+                        onTriggered: App.session.setArchived(row.chatId, !row.archived)
+                    }
+                    TMenuItem {
                         text: qsTr("Copy as Markdown")
                         iconName: "copy"
                         enabled: row.current
@@ -253,9 +267,47 @@ Rectangle {
                     color: Theme.textSecondary
                     font.pixelSize: Theme.body
                     text: filter.text !== "" ? qsTr("No chat matches “%1”").arg(filter.text)
+                        : App.session.chats.archived ? qsTr("Nothing is archived")
                         : root.win.connected ? qsTr("No chats yet")
                         : qsTr("Chats appear here once Talon is connected")
                 }
+            }
+        }
+
+        // The archive: chats put out of the way, one tap from the list.
+        Item {
+            visible: App.session.archivedCount > 0 || App.session.chats.archived
+            Layout.fillWidth: true
+            implicitHeight: 34
+
+            Rectangle {
+                anchors.fill: parent
+                anchors.leftMargin: 8
+                anchors.rightMargin: 8
+                anchors.bottomMargin: 4
+                radius: 9
+                color: archiveHover.hovered ? Theme.hover : "transparent"
+
+                Row {
+                    anchors.verticalCenter: parent.verticalCenter
+                    x: 12
+                    spacing: 9
+                    Icon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: App.session.chats.archived ? "arrow-left" : "folder"
+                        size: 15
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: App.session.chats.archived
+                              ? qsTr("Back to chats")
+                              : qsTr("Archived (%1)").arg(App.session.archivedCount)
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.small + 1
+                    }
+                }
+                HoverHandler { id: archiveHover; cursorShape: Qt.PointingHandCursor }
+                TapHandler { onTapped: App.session.chats.archived = !App.session.chats.archived }
             }
         }
 

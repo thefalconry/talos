@@ -86,6 +86,63 @@ std::optional<QByteArray> open(const QByteArray &key, const QByteArray &sealed,
     return plain;
 }
 
+namespace {
+
+const char kBoxContext[] = "talos-box-v1";
+
+/// The symmetric key both sides of a sealed box arrive at.
+QByteArray boxKey(const QByteArray &shared, const QByteArray &ephemeralPublic,
+                  const QByteArray &recipientPublic)
+{
+    QByteArray material = shared + ephemeralPublic + recipientPublic;
+    QByteArray key(kKeyBytes, Qt::Uninitialized);
+    crypto_blake2b(u8(key), size_t(kKeyBytes), u8(material), size_t(material.size()));
+    wipe(material);
+    return key;
+}
+
+} // namespace
+
+BoxKeys boxKeys()
+{
+    BoxKeys keys;
+    keys.secretKey = randomBytes(kKeyBytes);
+    keys.publicKey = QByteArray(kKeyBytes, Qt::Uninitialized);
+    crypto_x25519_public_key(u8(keys.publicKey), u8(keys.secretKey));
+    return keys;
+}
+
+QByteArray sealTo(const QByteArray &publicKey, const QByteArray &plain)
+{
+    if (publicKey.size() != kKeyBytes)
+        return {};
+    BoxKeys ephemeral = boxKeys();
+    QByteArray shared(kKeyBytes, Qt::Uninitialized);
+    crypto_x25519(u8(shared), u8(ephemeral.secretKey), u8(publicKey));
+    QByteArray key = boxKey(shared, ephemeral.publicKey, publicKey);
+    const QByteArray out = ephemeral.publicKey + seal(key, plain, kBoxContext);
+    wipe(shared);
+    wipe(key);
+    wipe(ephemeral.secretKey);
+    return out;
+}
+
+std::optional<QByteArray> openBox(const QByteArray &secretKey, const QByteArray &sealed)
+{
+    if (secretKey.size() != kKeyBytes || sealed.size() < kKeyBytes)
+        return std::nullopt;
+    const QByteArray ephemeralPublic = sealed.left(kKeyBytes);
+    QByteArray publicKey(kKeyBytes, Qt::Uninitialized);
+    crypto_x25519_public_key(u8(publicKey), u8(secretKey));
+    QByteArray shared(kKeyBytes, Qt::Uninitialized);
+    crypto_x25519(u8(shared), u8(secretKey), u8(ephemeralPublic));
+    QByteArray key = boxKey(shared, ephemeralPublic, publicKey);
+    const auto plain = open(key, sealed.mid(kKeyBytes), kBoxContext);
+    wipe(shared);
+    wipe(key);
+    return plain;
+}
+
 void wipe(QByteArray &secret)
 {
     if (!secret.isEmpty())

@@ -78,6 +78,8 @@ void AppLock::load()
     m_record.passes = quint32(o["passes"_L1].toInt());
     m_record.wrapped = QByteArray::fromBase64(o["wrapped"_L1].toString().toLatin1());
     m_record.check = QByteArray::fromBase64(o["check"_L1].toString().toLatin1());
+    m_record.boxPublic = QByteArray::fromBase64(o["boxPublic"_L1].toString().toLatin1());
+    m_record.boxSecret = QByteArray::fromBase64(o["boxSecret"_L1].toString().toLatin1());
     m_failures = o["failures"_L1].toInt();
     m_lastFailureMs = qint64(o["lastFailureMs"_L1].toDouble());
     m_enabled = !m_record.wrapped.isEmpty() && !m_record.salt.isEmpty();
@@ -96,6 +98,8 @@ void AppLock::save() const
         {"passes"_L1, int(m_record.passes)},
         {"wrapped"_L1, QString::fromLatin1(m_record.wrapped.toBase64())},
         {"check"_L1, QString::fromLatin1(m_record.check.toBase64())},
+        {"boxPublic"_L1, QString::fromLatin1(m_record.boxPublic.toBase64())},
+        {"boxSecret"_L1, QString::fromLatin1(m_record.boxSecret.toBase64())},
         {"failures"_L1, m_failures},
         {"lastFailureMs"_L1, double(m_lastFailureMs)},
     };
@@ -172,6 +176,7 @@ void AppLock::enable(const QString &passcode, QJSValue done)
         m_failures = 0;
         m_lastFailureMs = 0;
         m_lastActivityMs = nowMs();
+        openBoxKey();
         save();
         AppLog::info("lock", u"app lock enabled"_s);
         reply(done, true);
@@ -215,8 +220,11 @@ void AppLock::unlock(const QString &passcode, QJSValue done)
         }
         m_dataKey = *key;
         m_lastActivityMs = nowMs();
-        // Records made before biometric unlock existed gain the check here.
-        if (m_failures != 0 || m_record.check.isEmpty()) {
+        const bool hadBox = !m_record.boxPublic.isEmpty();
+        openBoxKey();
+        // Records made before biometric unlock, or before credentials were
+        // sealed, gain what they lack here.
+        if (m_failures != 0 || m_record.check.isEmpty() || !hadBox) {
             m_failures = 0;
             m_lastFailureMs = 0;
             m_record.check = crypto::seal(m_dataKey, "talos", "talos-applock-check");
@@ -280,6 +288,8 @@ void AppLock::disable(const QString &passcode, QJSValue done)
             reply(done, false, u"That passcode isn't right."_s);
             return;
         }
+        // While the lock can still open what it sealed.
+        emit aboutToDisable();
         reset();
         reply(done, true);
     });
@@ -290,7 +300,36 @@ void AppLock::lock()
     if (!m_enabled || locked())
         return;
     crypto::wipe(m_dataKey);
+    crypto::wipe(m_boxSecret);
     emit changed();
+    emit lockedNow();
+}
+
+void AppLock::openBoxKey()
+{
+    if (m_dataKey.isEmpty())
+        return;
+    if (!m_record.boxPublic.isEmpty()) {
+        if (const auto secret = crypto::open(m_dataKey, m_record.boxSecret, "talos-applock-box"))
+            m_boxSecret = *secret;
+        return;
+    }
+    crypto::BoxKeys keys = crypto::boxKeys();
+    m_record.boxPublic = keys.publicKey;
+    m_record.boxSecret = crypto::seal(m_dataKey, keys.secretKey, "talos-applock-box");
+    m_boxSecret = keys.secretKey;
+}
+
+QByteArray AppLock::sealSecret(const QByteArray &plain) const
+{
+    return canSeal() ? crypto::sealTo(m_record.boxPublic, plain) : QByteArray();
+}
+
+std::optional<QByteArray> AppLock::openSecret(const QByteArray &sealed) const
+{
+    if (m_boxSecret.isEmpty())
+        return std::nullopt;
+    return crypto::openBox(m_boxSecret, sealed);
 }
 
 bool AppLock::biometricEnabled() const
@@ -338,6 +377,10 @@ void AppLock::unlockWithBiometric(QJSValue done)
         }
         m_dataKey = key;
         m_lastActivityMs = nowMs();
+        const bool hadBox = !m_record.boxPublic.isEmpty();
+        openBoxKey();
+        if (!hadBox)
+            save();
         reply(done, true);
         emit changed();
         emit unlocked();
@@ -349,6 +392,7 @@ void AppLock::reset()
     m_bio.clear();
     m_store->setPref(u"lockBiometric"_s, false);
     crypto::wipe(m_dataKey);
+    crypto::wipe(m_boxSecret);
     m_enabled = false;
     m_record = {};
     m_failures = 0;

@@ -43,6 +43,7 @@ class Session : public QObject
     Q_PROPERTY(bool hasMoreHistory READ hasMoreHistory NOTIFY historyChanged)
     Q_PROPERTY(QVariantList models READ models NOTIFY modelsChanged)
     Q_PROPERTY(QVariantList commands READ commands NOTIFY commandsChanged)
+    Q_PROPERTY(int archivedCount READ archivedCount NOTIFY chatMarksChanged)
     Q_PROPERTY(QVariantMap daemonConfig READ daemonConfig NOTIFY daemonConfigChanged)
     Q_PROPERTY(QVariantList devices READ devices NOTIFY devicesChanged)
     Q_PROPERTY(QVariantList locations READ locations NOTIFY devicesChanged)
@@ -132,6 +133,14 @@ public:
     Q_INVOKABLE void deleteChat(const QString &chatId);
     Q_INVOKABLE void resetChat(const QString &chatId);
     Q_INVOKABLE void setPulse(const QString &chatId, bool on);
+    /// Pinning and archiving are this device's own bookkeeping.
+    Q_INVOKABLE void setPinned(const QString &chatId, bool on);
+    Q_INVOKABLE void setArchived(const QString &chatId, bool on);
+    Q_INVOKABLE bool isPinned(const QString &chatId) const;
+    Q_INVOKABLE bool isArchived(const QString &chatId) const;
+    int archivedCount() const;
+    /// The text of the open chat's most recent message from the user.
+    Q_INVOKABLE QString lastUserMessage() const;
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void loadOlder();
     Q_INVOKABLE QString exportMarkdown(const QString &chatId) const;
@@ -189,6 +198,7 @@ signals:
     void historyChanged();
     void modelsChanged();
     void commandsChanged();
+    void chatMarksChanged();
     /// A typed command asked for the model and effort picker.
     void modelPickerRequested();
     void daemonConfigChanged();
@@ -312,6 +322,8 @@ private:
     QVariantList m_commands;
     /// The list is the client's own (see builtInCommands), not the daemon's.
     bool m_commandsBuiltIn = false;
+    QStringList chatMarks(const char *kind) const;
+    void setChatMark(const char *kind, const QString &chatId, bool on);
     QVariantMap m_daemonConfig;
     QVariantList m_devices;
     QVariantList m_locations;

@@ -67,6 +67,11 @@ QVariantMap defaultPrefs()
         {u"meshMaxConcurrent"_s, 4},
         {u"meshMaxQueued"_s, 16},
         {u"meshMaxWriteGiB"_s, 4},
+        // What device control covers. Folders empty means anywhere.
+        {u"meshAllowExec"_s, true},
+        {u"meshAllowRead"_s, true},
+        {u"meshAllowWrite"_s, true},
+        {u"meshFolders"_s, QStringList()},
         {u"meshService"_s, false},          // the background service is installed
         {u"meshBackground"_s, false},       // Android: stay connected with the window closed
         {u"meshScreenControl"_s, false},    // Talon may see and drive the screen
@@ -254,11 +259,10 @@ Profile Store::activeProfile() const
         if (p.id != m_activeId)
             continue;
         Profile out = p;
-        bool found = false;
-        const QByteArray secrets = SecretStore::instance().read(u"profile/"_s + p.id, &found);
-        if (found)
-            out.applySecrets(QJsonDocument::fromJson(secrets).object());
-        out.certStored = out.hasClientCert();
+        bool locked = false;
+        out.applySecrets(readSecrets(p.id, &locked));
+        // Locked, the stored flag is all there is to go on.
+        out.certStored = locked ? p.certStored : out.hasClientCert();
         m_activeCache = out;
         return out;
     }
@@ -273,11 +277,9 @@ std::optional<Profile> Store::profileById(const QString &id) const
         if (p.id != id)
             continue;
         Profile out = p;
-        bool found = false;
-        const QByteArray secrets = SecretStore::instance().read(u"profile/"_s + p.id, &found);
-        if (found)
-            out.applySecrets(QJsonDocument::fromJson(secrets).object());
-        out.certStored = out.hasClientCert();
+        bool locked = false;
+        out.applySecrets(readSecrets(p.id, &locked));
+        out.certStored = locked ? p.certStored : out.hasClientCert();
         return out;
     }
     return std::nullopt;
@@ -321,12 +323,14 @@ void Store::saveProfile(const Profile &profile, bool makeActive)
     if (p.name.trimmed().isEmpty())
         p.name = p.local ? u"This computer"_s : p.host;
 
+    // Credentials that are sealed and can't be read right now are not this
+    // save's to replace with nothing: a profile read while the app is
+    // locked comes back without them.
+    bool locked = false;
+    readSecrets(p.id, &locked);
     const QJsonObject secrets = p.secretsJson();
-    if (secrets.isEmpty())
-        SecretStore::instance().remove(u"profile/"_s + p.id);
-    else
-        SecretStore::instance().write(u"profile/"_s + p.id,
-                                      QJsonDocument(secrets).toJson(QJsonDocument::Compact));
+    if (!locked || !secrets.isEmpty())
+        writeSecrets(p.id, secrets);
 
     bool replaced = false;
     for (Profile &existing : m_profiles) {
@@ -362,6 +366,7 @@ void Store::removeProfile(const QString &id)
         break;
     }
     SecretStore::instance().remove(u"profile/"_s + id);
+    m_secretMemo.remove(id);
     QFile::remove(snapshotPath(id, false));
     QFile::remove(snapshotPath(id, true));
     if (m_activeId == id)
@@ -473,6 +478,77 @@ void Store::removeSnapshots()
     const QDir dir(m_dataDir);
     for (const QString &name : dir.entryList({u"snapshot-*"_s}, QDir::Files))
         QFile::remove(dir.filePath(name));
+}
+
+QJsonObject Store::readSecrets(const QString &id, bool *locked) const
+{
+    if (locked)
+        *locked = false;
+    bool found = false;
+    const QByteArray raw = SecretStore::instance().read(u"profile/"_s + id, &found);
+    if (!found)
+        return {};
+    const QJsonObject stored = QJsonDocument::fromJson(raw).object();
+    if (!stored.contains("sealed"_L1)) {
+        m_secretMemo.insert(id, stored);
+        return stored;
+    }
+    const QByteArray sealed = QByteArray::fromBase64(stored["sealed"_L1].toString().toLatin1());
+    if (const auto plain = secretOpen ? secretOpen(sealed) : std::nullopt) {
+        const QJsonObject secrets = QJsonDocument::fromJson(*plain).object();
+        m_secretMemo.insert(id, secrets);
+        return secrets;
+    }
+    if (const auto held = m_secretMemo.constFind(id); held != m_secretMemo.constEnd())
+        return *held;
+    if (locked)
+        *locked = true;
+    return {};
+}
+
+void Store::writeSecrets(const QString &id, const QJsonObject &secrets)
+{
+    const QString key = u"profile/"_s + id;
+    m_secretMemo.insert(id, secrets);
+    if (secrets.isEmpty()) {
+        SecretStore::instance().remove(key);
+        return;
+    }
+    QByteArray bytes = QJsonDocument(secrets).toJson(QJsonDocument::Compact);
+    if (secretsSealed && secretsSealed() && secretSeal) {
+        const QByteArray sealed = secretSeal(bytes);
+        if (!sealed.isEmpty()) {
+            bytes = QJsonDocument(QJsonObject{{"sealed"_L1, QString::fromLatin1(sealed.toBase64())}})
+                        .toJson(QJsonDocument::Compact);
+        }
+    }
+    SecretStore::instance().write(key, bytes);
+}
+
+void Store::invalidateSecrets()
+{
+    m_secretMemo.clear();
+    m_activeCache.reset();
+}
+
+bool Store::secretsLocked() const
+{
+    if (!hasProfile())
+        return false;
+    bool locked = false;
+    readSecrets(m_activeId, &locked);
+    return locked;
+}
+
+void Store::resealSecrets()
+{
+    for (const Profile &p : std::as_const(m_profiles)) {
+        bool locked = false;
+        const QJsonObject secrets = readSecrets(p.id, &locked);
+        if (!locked && !secrets.isEmpty())
+            writeSecrets(p.id, secrets);
+    }
+    m_activeCache.reset();
 }
 
 void Store::setSecretsInFile(bool inFile)

@@ -24,6 +24,19 @@ QByteArray seal(const QByteArray &key, const QByteArray &plain, const QByteArray
 std::optional<QByteArray> open(const QByteArray &key, const QByteArray &sealed,
                                const QByteArray &ad = {});
 
+/// A key pair for sealing *to*: anyone holding the public half can seal,
+/// only the secret half opens. That lets something be put away while the
+/// key that would read it back is itself locked up.
+struct BoxKeys {
+    QByteArray publicKey;
+    QByteArray secretKey;
+};
+BoxKeys boxKeys();
+/// Seal @p plain so only the holder of @p publicKey's secret half can open
+/// it. Output is an ephemeral public key (32) followed by seal()'s output.
+QByteArray sealTo(const QByteArray &publicKey, const QByteArray &plain);
+std::optional<QByteArray> openBox(const QByteArray &secretKey, const QByteArray &sealed);
+
 void wipe(QByteArray &secret);
 
 } // namespace talos::crypto

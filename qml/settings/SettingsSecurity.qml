@@ -75,6 +75,16 @@ Pane {
         }
         SettingRow {
             visible: App.lock.enabled
+            iconName: "key"
+            readonly property bool held: App.prefs.meshService || App.prefs.meshBackground
+            title: held ? qsTr("Tokens and certificates are not sealed")
+                        : qsTr("Tokens and certificates are sealed with the passcode")
+            subtitle: held
+                      ? qsTr("The background connection has to read them with nobody there to unlock. Chats saved for offline use are still sealed.")
+                      : qsTr("After a restart Talos stays offline until it is unlocked. Attachments it has cached are deleted whenever it locks.")
+        }
+        SettingRow {
+            visible: App.lock.enabled
             title: qsTr("Erase the connection after 10 wrong passcodes")
             subtitle: qsTr("Removes this device's connections and cached chats. Nothing on Talon is touched.")
             TSwitch {

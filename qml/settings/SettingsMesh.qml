@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 import QtQuick
+import QtQuick.Dialogs
 import Talos.Native
 
 // This device on Talon's mesh, the other devices, and what was run here.
@@ -56,6 +57,60 @@ Pane {
                         qsTr("Give Talon control of this device?"),
                         qsTr("Talon, and anyone able to instruct it, can then run any command and touch any file your account can. Only do this for a Talon you run yourself."),
                         qsTr("Allow"), () => pane.mesh.deviceControl = true)
+                }
+            }
+        }
+        SettingRow {
+            visible: App.prefs.meshSharing && pane.mesh.deviceControl
+            title: qsTr("Run shell commands")
+            subtitle: App.prefs.meshFolders.length > 0 && App.prefs.meshAllowExec
+                      ? qsTr("A shell command can reach any file, whatever folders are listed below. Turn this off to keep Talon inside them.")
+                      : qsTr("Talon may run commands in your shell.")
+            TSwitch {
+                checked: App.prefs.meshAllowExec
+                onToggled: App.prefs.meshAllowExec = checked
+            }
+        }
+        SettingRow {
+            visible: App.prefs.meshSharing && pane.mesh.deviceControl
+            title: qsTr("Read files")
+            subtitle: qsTr("List folders, read files and send them to Talon.")
+            TSwitch {
+                checked: App.prefs.meshAllowRead
+                onToggled: App.prefs.meshAllowRead = checked
+            }
+        }
+        SettingRow {
+            visible: App.prefs.meshSharing && pane.mesh.deviceControl
+            title: qsTr("Change files")
+            subtitle: qsTr("Write, move and delete files, and receive files from Talon.")
+            TSwitch {
+                checked: App.prefs.meshAllowWrite
+                onToggled: App.prefs.meshAllowWrite = checked
+            }
+        }
+        SettingRow {
+            visible: App.prefs.meshSharing && pane.mesh.deviceControl
+            title: qsTr("Only in these folders")
+            subtitle: App.prefs.meshFolders.length === 0
+                      ? qsTr("No folders listed: file commands may touch anything your account can.")
+                      : qsTr("File commands outside these folders are refused.")
+            TButton {
+                compact: true
+                text: qsTr("Add folder")
+                onClicked: folderPicker.open()
+            }
+        }
+        Repeater {
+            model: App.prefs.meshSharing && pane.mesh.deviceControl ? App.prefs.meshFolders : []
+            SettingRow {
+                required property string modelData
+                iconName: "folder"
+                title: modelData
+                IconButton {
+                    iconName: "close"
+                    tip: qsTr("Remove this folder")
+                    onClicked: App.prefs.meshFolders = App.prefs.meshFolders.filter(f => f !== parent.modelData)
                 }
             }
         }
@@ -268,6 +323,16 @@ Pane {
             iconName: "trash"
             title: qsTr("Clear this list")
             onClicked: pane.mesh.clearAudit()
+        }
+    }
+
+    FolderDialog {
+        id: folderPicker
+        title: qsTr("A folder Talon may use")
+        onAccepted: {
+            const path = App.localPath(selectedFolder)
+            if (path !== "" && App.prefs.meshFolders.indexOf(path) < 0)
+                App.prefs.meshFolders = App.prefs.meshFolders.concat([path])
         }
     }
 }

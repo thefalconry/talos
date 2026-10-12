@@ -99,6 +99,8 @@ Session::Session(Store *store, QObject *parent, bool narrow)
         return c.id != m_selected && c.lastActive > m_store->lastRead(c.id);
     };
     m_chats.isRunning = [this](const Chat &c) { return isTurnRunning(c.id); };
+    m_chats.isPinned = [this](const Chat &c) { return isPinned(c.id); };
+    m_chats.isArchived = [this](const Chat &c) { return isArchived(c.id); };
     const auto countChanged = [this] { emit chatCountChanged(); };
     connect(&m_chats, &QAbstractItemModel::rowsInserted, this, countChanged);
     connect(&m_chats, &QAbstractItemModel::rowsRemoved, this, countChanged);
@@ -287,6 +289,13 @@ void Session::start()
     m_retry.stop();
     const int epoch = ++m_epoch;
     if (!m_store->hasProfile()) {
+        dropClient();
+        setConn(Idle);
+        return;
+    }
+    // Sealed credentials and an app not yet unlocked: there is nothing to
+    // present. Unlocking starts the session.
+    if (m_store->secretsLocked()) {
         dropClient();
         setConn(Idle);
         return;
@@ -1347,6 +1356,57 @@ void Session::setPulse(const QString &chatId, bool on)
         emit chatChanged();
     m_client->post(u"/chats/pulse"_s, {{"chatId"_L1, chatId}, {"on"_L1, on}},
                    noteOnFailure(chatId, u"Pulse change"_s));
+}
+
+QStringList Session::chatMarks(const char *kind) const
+{
+    return m_store->prefList(QLatin1StringView(kind) + u'/' + m_store->activeProfileId());
+}
+
+void Session::setChatMark(const char *kind, const QString &chatId, bool on)
+{
+    QStringList marks = chatMarks(kind);
+    if (marks.contains(chatId) == on || chatId.isEmpty())
+        return;
+    if (on)
+        marks << chatId;
+    else
+        marks.removeAll(chatId);
+    // Chats deleted elsewhere would otherwise sit in the list for good.
+    marks.removeIf([this, &chatId](const QString &id) {
+        return id != chatId && !m_chats.chats().isEmpty() && !m_chats.find(id);
+    });
+    m_store->setPref(QLatin1StringView(kind) + u'/' + m_store->activeProfileId(), marks);
+    m_chats.touch(chatId);
+    // Both the order and which list a chat belongs to depend on its marks.
+    m_chatFilter.invalidate();
+    emit chatMarksChanged();
+}
+
+void Session::setPinned(const QString &chatId, bool on) { setChatMark("chatPins", chatId, on); }
+void Session::setArchived(const QString &chatId, bool on) { setChatMark("chatArchive", chatId, on); }
+bool Session::isPinned(const QString &chatId) const { return chatMarks("chatPins").contains(chatId); }
+bool Session::isArchived(const QString &chatId) const { return chatMarks("chatArchive").contains(chatId); }
+
+int Session::archivedCount() const
+{
+    int n = 0;
+    for (const Chat &c : m_chats.chats())
+        n += isArchived(c.id);
+    return n;
+}
+
+QString Session::lastUserMessage() const
+{
+    const auto it = m_data.find(m_selected);
+    if (it == m_data.end())
+        return {};
+    const auto &messages = it->second.messages;
+    for (auto m = messages.rbegin(); m != messages.rend(); ++m) {
+        if (m->role == Message::User)
+            return m->text;
+    }
+    return {};
 }
 
 void Session::refresh()

@@ -173,6 +173,11 @@ QString MediaStore::downloadsDir() const
     return QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
 }
 
+void MediaStore::clear()
+{
+    QDir(QDir(m_store->cacheDir()).filePath(u"media"_s)).removeRecursively();
+}
+
 void MediaStore::prune()
 {
     const QString root = QDir(m_store->cacheDir()).filePath(u"media"_s);

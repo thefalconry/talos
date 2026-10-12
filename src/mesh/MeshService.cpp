@@ -125,10 +125,95 @@ QStringList MeshService::capabilitiesFor(bool deviceControl)
     return caps;
 }
 
+QString MeshService::commandKind(const QString &command)
+{
+    if (command == "exec"_L1)
+        return u"exec"_s;
+    static const QStringList reads{u"read_file"_s, u"list_dir"_s, u"stat"_s, u"upload_file"_s};
+    static const QStringList writes{u"write_file"_s, u"delete"_s, u"mkdir"_s, u"move"_s,
+                                    u"download_file"_s};
+    if (reads.contains(command))
+        return u"read"_s;
+    if (writes.contains(command))
+        return u"write"_s;
+    return {};
+}
+
+QStringList MeshService::commandPaths(const QString &command, const QJsonObject &params)
+{
+    if (command == "move"_L1)
+        return {params["from"_L1].toString(), params["to"_L1].toString()};
+    if (command == "exec"_L1)
+        return {};
+    if (!commandKind(command).isEmpty() || command == "update_node"_L1
+        || command == "install_apk"_L1)
+        return {params["path"_L1].toString()};
+    return {};
+}
+
+bool MeshService::pathAllowed(const QString &path, const QStringList &folders)
+{
+    if (folders.isEmpty())
+        return true;
+    if (path.isEmpty())
+        return false;
+    // Resolve as much of the path as exists; what doesn't exist yet can't
+    // be a link. cleanPath has already folded any "..".
+    const QString clean = QDir::cleanPath(QFileInfo(path).absoluteFilePath());
+    QString existing = clean;
+    QStringList rest;
+    while (!QFileInfo::exists(existing) && !QFileInfo(existing).isSymLink()) {
+        const QFileInfo info(existing);
+        if (info.absolutePath() == existing)
+            break;
+        rest.prepend(info.fileName());
+        existing = info.absolutePath();
+    }
+    QString real = QFileInfo(existing).canonicalFilePath();
+    if (real.isEmpty())
+        return false; // a dangling link: nothing to say where it leads
+    if (!rest.isEmpty())
+        real = QDir(real).filePath(rest.join(u'/'));
+    for (const QString &folder : folders) {
+        const QString root = QFileInfo(folder).canonicalFilePath();
+        if (root.isEmpty())
+            continue;
+        if (real == root || real.startsWith(root.endsWith(u'/') ? root : root + u'/'))
+            return true;
+    }
+    return false;
+}
+
+QString MeshService::policyDenial(const QString &command, const QJsonObject &params) const
+{
+    const QString kind = commandKind(command);
+    if (kind == "exec"_L1 && !m_store->prefBool(u"meshAllowExec"_s))
+        return u"Shell commands are turned off on this device."_s;
+    if (kind == "read"_L1 && !m_store->prefBool(u"meshAllowRead"_s))
+        return u"Reading files is turned off on this device."_s;
+    if (kind == "write"_L1 && !m_store->prefBool(u"meshAllowWrite"_s))
+        return u"Changing files is turned off on this device."_s;
+    const QStringList folders = m_store->prefList(u"meshFolders"_s);
+    for (const QString &path : commandPaths(command, params)) {
+        if (!pathAllowed(path, folders)) {
+            return u"%1 is outside the folders this device lets Talon use (%2)."_s
+                .arg(path.isEmpty() ? u"That path"_s : path, folders.join(u", "_s));
+        }
+    }
+    return {};
+}
+
 QStringList MeshService::capabilities() const
 {
     const bool control = deviceControl();
     QStringList caps = capabilitiesFor(control);
+    // Don't offer what would only be refused.
+    caps.removeIf([this](const QString &command) {
+        const QString kind = commandKind(command);
+        return (kind == "exec"_L1 && !m_store->prefBool(u"meshAllowExec"_s))
+            || (kind == "read"_L1 && !m_store->prefBool(u"meshAllowRead"_s))
+            || (kind == "write"_L1 && !m_store->prefBool(u"meshAllowWrite"_s));
+    });
     if (control && canUpdateSelf())
         caps << u"update_node"_s;
 #if defined(Q_OS_ANDROID)
@@ -565,6 +650,8 @@ void MeshService::execute(const QString &id, const QString &name, const QJsonObj
         done(CommandOutcome::done(statusPayload()));
     } else if (!control) {
         done(CommandOutcome::fail(u"Device control is disabled on this device."_s));
+    } else if (const QString denial = policyDenial(name, params); !denial.isEmpty()) {
+        done(CommandOutcome::fail(denial));
     } else if (name == "upload_file"_L1) {
         uploadFile(params, done);
     } else if (name == "download_file"_L1) {

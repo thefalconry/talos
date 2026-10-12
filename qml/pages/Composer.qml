@@ -79,6 +79,12 @@ Item {
     }
 
     function focusInput() { input.forceActiveFocus() }
+    /// Put text in the box for the user to change and send.
+    function setText(text) {
+        input.text = text
+        input.cursorPosition = input.length
+        input.forceActiveFocus()
+    }
 
     Connections {
         target: App.session

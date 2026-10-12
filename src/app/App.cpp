@@ -8,6 +8,7 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QDateTime>
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QImage>
@@ -15,6 +16,8 @@
 #include <QMimeData>
 #include <QPalette>
 #include <QProcess>
+#include <QRegularExpression>
+#include <QStandardPaths>
 #include <QQmlEngine>
 #include <QQuickWindow>
 #include <QSaveFile>
@@ -65,10 +68,36 @@ App::App(QObject *parent)
     // lock is configured, and unreadable while it is locked.
     m_store.snapshotMustSeal = [this] { return m_lock.enabled(); };
     m_store.snapshotKey = [this] { return m_lock.dataKey(); };
+    // Credentials are sealed to the lock too, unless something has to read
+    // them with nobody there to unlock it: the background service.
+    m_store.secretsSealed = [this] {
+        return m_lock.canSeal() && !m_unsealing && !m_store.prefBool(u"meshService"_s)
+            && !m_store.prefBool(u"meshBackground"_s);
+    };
+    m_store.secretSeal = [this](const QByteArray &plain) { return m_lock.sealSecret(plain); };
+    m_store.secretOpen = [this](const QByteArray &sealed) { return m_lock.openSecret(sealed); };
     connect(&m_lock, &AppLock::unlocked, this, [this] {
+        // Covers a lock just switched on, and one from before credentials
+        // were sealed.
+        m_store.resealSecrets();
         m_session.restoreSnapshot();
         m_session.persist();
+        // Started locked: this is the first moment there is a credential.
+        if (m_session.conn() == Session::Idle && m_store.hasProfile())
+            m_session.start();
     });
+    connect(&m_lock, &AppLock::aboutToDisable, this, [this] {
+        m_unsealing = true;
+        m_store.resealSecrets();
+        m_unsealing = false;
+    });
+    connect(&m_lock, &AppLock::lockedNow, this, [this] {
+        // Attachments are cached as ordinary files; with the app locked
+        // they go, and are fetched again when next looked at.
+        m_media.clear();
+    });
+    if (m_lock.locked())
+        m_media.clear();
     connect(&m_lock, &AppLock::changed, this, [this] {
         // Turning the lock off must not leave the snapshot sealed under a
         // key that no longer exists.
@@ -123,6 +152,9 @@ App::App(QObject *parent)
             platform::setSecureWindow(m_store.prefBool(key));
         else if (key == "meshSharing"_L1 || key == "meshBackground"_L1)
             updateKeepAlive();
+        // Whether credentials may stay sealed depends on these two.
+        if (key == "meshService"_L1 || key == "meshBackground"_L1)
+            m_store.resealSecrets();
         else if (key == "autostart"_L1)
             m_desktop.setAutostart(m_store.prefBool(key));
         else if (key == "voiceName"_L1 || key == "voiceRate"_L1)
@@ -680,6 +712,23 @@ void App::updateKeepAlive()
                            u"Staying reachable on the mesh"_s);
 }
 
+QUrl App::suggestedFile(const QString &title, const QString &suffix) const
+{
+    static const QRegularExpression unsafe(u"[\\x00-\\x1f<>:\"/\\\\|?*]+"_s);
+    QString name = title.simplified().left(80);
+    name.replace(unsafe, u" "_s);
+    name = name.simplified();
+    if (name.isEmpty() || name.startsWith(u'.'))
+        name = u"chat"_s;
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    return QUrl::fromLocalFile(QDir(dir).filePath(name + u'.' + suffix));
+}
+
+QString App::localPath(const QUrl &url) const
+{
+    return url.isLocalFile() ? QDir::cleanPath(url.toLocalFile()) : QString();
+}
+
 bool App::moveToBackground()
 {
     if (!platform::moveToBackground())
@@ -692,6 +741,8 @@ void App::quit()
 {
     m_quitting = true;
     m_session.persist();
+    if (m_lock.enabled())
+        m_media.clear();
     QCoreApplication::quit();
 }
 

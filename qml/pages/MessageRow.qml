@@ -22,6 +22,7 @@ Item {
     required property var tools
     required property string stats
     required property string day
+    required property int index
 
     property int column: Theme.column
     readonly property var win: C.ApplicationWindow.window
@@ -338,6 +339,26 @@ Item {
                     copyReset.restart()
                 }
                 Timer { id: copyReset; interval: 1500; onTriggered: copyButton.done = false }
+            }
+            IconButton {
+                visible: row.mine
+                size: 24
+                iconSize: 14
+                iconName: "edit"
+                tip: qsTr("Edit and send again")
+                onClicked: row.win.editMessage(row.text)
+            }
+            IconButton {
+                // Only the latest reply can be asked for again: Talon keeps
+                // one line of conversation, with no branches.
+                visible: !row.mine && row.ListView.view
+                         && row.index === row.ListView.view.count - 1
+                         && !App.session.turn.active
+                size: 24
+                iconSize: 14
+                iconName: "refresh"
+                tip: qsTr("Ask again")
+                onClicked: row.win.askAgain()
             }
             IconButton {
                 visible: !row.mine && App.voice.canSpeak

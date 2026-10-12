@@ -5,6 +5,7 @@
 
 #include <QJSValue>
 #include <QObject>
+#include <optional>
 #include <QTimer>
 
 class QJSEngine;
@@ -50,6 +51,12 @@ public:
     /// The key that seals the snapshot; empty while locked or disabled.
     QByteArray dataKey() const { return m_dataKey; }
 
+    /// True when credentials can be sealed: the lock is on and has its key
+    /// pair. Sealing works locked or not; opening needs the app unlocked.
+    bool canSeal() const { return m_enabled && !m_record.boxPublic.isEmpty(); }
+    QByteArray sealSecret(const QByteArray &plain) const;
+    std::optional<QByteArray> openSecret(const QByteArray &sealed) const;
+
     /// Each callback receives `{ok, error}`.
     Q_INVOKABLE void enable(const QString &passcode, QJSValue done);
     Q_INVOKABLE void unlock(const QString &passcode, QJSValue done);
@@ -79,6 +86,10 @@ signals:
     void changed();
     void tick();
     void unlocked();
+    /// The key was just dropped: what it protects must go from memory too.
+    void lockedNow();
+    /// The lock is about to be removed and can still open what it sealed.
+    void aboutToDisable();
     /// Too many failed attempts with erase-on-failure on.
     void eraseRequested();
 
@@ -91,7 +102,14 @@ private:
         /// A constant sealed under the data key: lets a key released by a
         /// biometric be recognised as the right one.
         QByteArray check;
+        /// Credentials are sealed to this half, which is no secret...
+        QByteArray boxPublic;
+        /// ...and opened with the other, kept sealed under the data key.
+        QByteArray boxSecret;
     };
+    /// Called with the data key in hand: load the box's secret half, or
+    /// make the pair for a lock set up before there was one.
+    void openBoxKey();
     void load();
     void save() const;
     void derive(const QString &passcode, const Record &record,
@@ -106,6 +124,7 @@ private:
     bool m_busy = false;
     Record m_record;
     QByteArray m_dataKey;
+    QByteArray m_boxSecret;
     int m_failures = 0;
     qint64 m_lastFailureMs = 0;
     qint64 m_lastActivityMs = 0;

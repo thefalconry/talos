@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include "core/Markdown.h"
 
+#include "core/Math.h"
+
 #include <QRegularExpression>
 
 namespace talos::markdown {
@@ -41,6 +43,19 @@ bool parseFence(QStringView line, Fence *out)
     out->length = n;
     out->info = info;
     return true;
+}
+
+/// Text that must come out of the Markdown renderer as written.
+QString escapeMarkup(const QString &text)
+{
+    QString out;
+    out.reserve(text.size() + 8);
+    for (const QChar c : text) {
+        if (u"\\`*_[]<"_s.contains(c))
+            out += u'\\';
+        out += c;
+    }
+    return out;
 }
 
 /// Make prose safe to hand to a rich-text item.
@@ -86,6 +101,41 @@ QString disarm(const QString &text)
             out += QStringView(text).sliced(i, end - i);
             i = end;
             continue;
+        }
+        // Inline mathematics, \\( … \\) or $ … $, becomes readable text. A
+        // dollar sign is only taken as mathematics when it closes on the
+        // same line the way a formula does, so "$5 and $10" stays money.
+        if (c == u'\\' && i + 1 < n && text.at(i + 1) == u'(') {
+            const qsizetype close = text.indexOf(u"\\)"_s, i + 2);
+            if (close > 0 && !QStringView(text).sliced(i, close - i).contains(u'\n')) {
+                out += escapeMarkup(math::toUnicode(text.mid(i + 2, close - i - 2)));
+                i = close + 2;
+                continue;
+            }
+        }
+        if (c == u'$' && i + 1 < n && !text.at(i + 1).isSpace() && text.at(i + 1) != u'$') {
+            qsizetype close = -1;
+            for (qsizetype j = i + 1; j < n && j - i <= 240; ++j) {
+                const QChar d = text.at(j);
+                if (d == u'\n' || d == u'`')
+                    break;
+                if (d == u'\\') {
+                    ++j;
+                    continue;
+                }
+                if (d == u'$') {
+                    const bool tight = !text.at(j - 1).isSpace();
+                    const bool ends = j + 1 >= n || !text.at(j + 1).isLetterOrNumber();
+                    if (tight && ends)
+                        close = j;
+                    break;
+                }
+            }
+            if (close > i + 1) {
+                out += escapeMarkup(math::toUnicode(text.mid(i + 1, close - i - 1)));
+                i = close + 1;
+                continue;
+            }
         }
         if (c == u'\\' && i + 1 < n) {
             // An escaped character stays escaped.
@@ -141,12 +191,55 @@ QVariantList split(const QString &text)
     QStringList code;
     bool inCode = false;
     Fence open;
+    bool inMath = false;
+    QString mathClose;
+    QStringList math;
 
     const auto lines = QStringView(text).split(u'\n');
     for (QStringView raw : lines) {
         QStringView line = raw;
         if (line.endsWith(u'\r'))
             line.chop(1);
+        // Display mathematics: $$ … $$ or \\[ … \\], on one line or several.
+        if (!inCode) {
+            const QStringView t = line.trimmed();
+            const auto pushMath = [&](const QString &tex) {
+                pushText(blocks, prose);
+                const QString shown = math::toUnicode(tex);
+                if (!shown.isEmpty()) {
+                    blocks.append(QVariantMap{{u"type"_s, u"math"_s}, {u"text"_s, shown},
+                                              {u"tex"_s, tex.trimmed()}});
+                }
+            };
+            if (inMath) {
+                const bool closes = t.endsWith(mathClose);
+                math << (closes ? t.chopped(mathClose.size()) : line).toString();
+                if (closes) {
+                    pushMath(math.join(u'\n'));
+                    math.clear();
+                    inMath = false;
+                }
+                continue;
+            }
+            bool handled = false;
+            for (const auto &[open, close] : {std::pair{u"$$"_s, u"$$"_s},
+                                              std::pair{u"\\["_s, u"\\]"_s}}) {
+                if (!t.startsWith(open))
+                    continue;
+                const QStringView rest = t.sliced(open.size());
+                if (!rest.isEmpty() && rest.endsWith(close)) {
+                    pushMath(rest.chopped(close.size()).toString());
+                } else {
+                    inMath = true;
+                    mathClose = close;
+                    math << rest.toString();
+                }
+                handled = true;
+                break;
+            }
+            if (handled)
+                continue;
+        }
         Fence f;
         const bool isFence = parseFence(line, &f);
         if (!inCode) {
@@ -172,7 +265,13 @@ QVariantList split(const QString &text)
         }
         code << line.toString();
     }
-    if (inCode) {
+    if (inMath) {
+        // Still arriving: show what there is.
+        pushText(blocks, prose);
+        const QString shown = math::toUnicode(math.join(u'\n'));
+        if (!shown.isEmpty())
+            blocks.append(QVariantMap{{u"type"_s, u"math"_s}, {u"text"_s, shown}});
+    } else if (inCode) {
         blocks.append(QVariantMap{
             {u"type"_s, u"code"_s},
             {u"lang"_s, open.info.section(u' ', 0, 0).toLower()},

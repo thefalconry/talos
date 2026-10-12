@@ -35,6 +35,8 @@ public:
     Q_INVOKABLE QString downloadsDir() const;
     /// Drop cached files not touched for a week.
     void prune();
+    /// Delete everything cached.
+    void clear();
 
 signals:
     void ready(const QString &path, const QUrl &local);

@@ -61,6 +61,16 @@ public:
 
     static QStringList coreCapabilities();
     static QStringList capabilitiesFor(bool deviceControl);
+    /// Which of the three kinds a device-control command is: "exec",
+    /// "read" or "write". Empty for commands with a switch of their own.
+    static QString commandKind(const QString &command);
+    /// Every path a command would touch.
+    static QStringList commandPaths(const QString &command, const QJsonObject &params);
+    /// True when @p path lies inside one of @p folders, following the links
+    /// that exist on the way so a link can't lead out. No folders: anywhere.
+    static bool pathAllowed(const QString &path, const QStringList &folders);
+    /// Why the limits the user set refuse this command, or empty.
+    QString policyDenial(const QString &command, const QJsonObject &params) const;
     /// What this device advertises right now, extras included.
     QStringList capabilities() const;
     /// Only one process per data directory answers mesh commands: the app or

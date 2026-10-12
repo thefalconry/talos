@@ -45,6 +45,7 @@ public:
     bool prefBool(const QString &key) const { return m_prefs.value(key).toBool(); }
     int prefInt(const QString &key) const { return m_prefs.value(key).toInt(); }
     QString prefString(const QString &key) const { return m_prefs.value(key).toString(); }
+    QStringList prefList(const QString &key) const { return m_prefs.value(key).toStringList(); }
     Q_INVOKABLE void setPref(const QString &key, const QVariant &value);
 
     const QList<Profile> &profiles() const { return m_profiles; }
@@ -101,7 +102,22 @@ public:
     void reloadPrefs();
     QString prefsPath() const;
     /// Forget cached credentials so the next read goes to the store.
-    void invalidateSecrets() { m_activeCache.reset(); }
+    /// Forget what is held in memory and read credentials from the store
+    /// again: another process may have changed them.
+    void invalidateSecrets();
+
+    /// Set by the app lock. When @ref secretsSealed says so, a profile's
+    /// credentials are stored sealed to the lock: they can be put away at
+    /// any time, and read back only while the app is unlocked.
+    std::function<bool()> secretsSealed;
+    std::function<QByteArray(const QByteArray &)> secretSeal;
+    std::function<std::optional<QByteArray>(const QByteArray &)> secretOpen;
+    /// True when the active profile's credentials are sealed and nothing
+    /// here can open them yet: the app has not been unlocked since it began.
+    bool secretsLocked() const;
+    /// Rewrite every profile's credentials the way the current settings
+    /// want them (sealed or not). Ones that can't be opened are left alone.
+    void resealSecrets();
 
     void flush();
 
@@ -125,6 +141,12 @@ private:
     QList<Profile> m_profiles;
     QString m_activeId;
     mutable std::optional<Profile> m_activeCache;
+    /// Credentials as last read or written, by profile. A sealed copy on
+    /// disk can't be opened while the app is locked, but a connection made
+    /// before it locked still needs them.
+    mutable QHash<QString, QJsonObject> m_secretMemo;
+    QJsonObject readSecrets(const QString &id, bool *locked = nullptr) const;
+    void writeSecrets(const QString &id, const QJsonObject &secrets);
     QHash<QString, qint64> m_lastRead;
     QTimer m_saveTimer;
     bool m_prefsDirty = false;

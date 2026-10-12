@@ -23,8 +23,12 @@ Column {
             readonly property var block: root.blocks[index] || ({})
             readonly property bool isCode: block.type === "code"
 
+            readonly property bool isMath: block.type === "math"
+            readonly property bool isChart: isCode && block.lang === "mermaid"
+                                            && block.closed !== false
+
             width: root.width
-            sourceComponent: isCode ? codeBlock : prose
+            sourceComponent: isMath ? mathBlock : isChart ? chartBlock : isCode ? codeBlock : prose
 
             Component {
                 id: prose
@@ -46,6 +50,84 @@ Column {
                     HoverHandler {
                         cursorShape: parent.hoveredLink !== "" ? Qt.PointingHandCursor
                                                                : Qt.IBeamCursor
+                    }
+                }
+            }
+            Component {
+                id: mathBlock
+                // A displayed formula, as close as plain characters get.
+                Rectangle {
+                    width: slot.width
+                    implicitHeight: formula.implicitHeight + 22
+                    radius: Theme.radius
+                    color: Theme.sunken
+
+                    TextEdit {
+                        id: formula
+                        anchors.centerIn: parent
+                        width: Math.min(implicitWidth, parent.width - 28)
+                        text: slot.block.text || ""
+                        readOnly: true
+                        selectByMouse: !App.mobile
+                        textFormat: TextEdit.PlainText
+                        wrapMode: TextEdit.Wrap
+                        horizontalAlignment: TextEdit.AlignHCenter
+                        color: root.color
+                        font.pixelSize: Theme.reading + 2
+                        font.italic: true
+                        font.family: "serif"
+                        selectionColor: Theme.accentSoft
+                        selectedTextColor: Theme.text
+                    }
+                }
+            }
+            Component {
+                id: chartBlock
+                // A flowchart is drawn; any other diagram, or one that
+                // can't be read, is shown as its source.
+                Column {
+                    id: chartHolder
+                    property bool showSource: false
+                    width: slot.width
+                    spacing: 6
+
+                    Rectangle {
+                        visible: chart.valid && !chartHolder.showSource
+                        width: parent.width
+                        height: visible ? chart.height + 20 : 0
+                        radius: Theme.radius
+                        color: Theme.sunken
+                        border.width: 1
+                        border.color: Theme.border
+                        clip: true
+
+                        FlowChart {
+                            id: chart
+                            x: Math.max(10, (parent.width - width) / 2)
+                            y: 10
+                            width: Math.min(implicitWidth, parent.width - 20)
+                            height: implicitWidth > 0 ? implicitHeight * (width / implicitWidth) : 0
+                            source: slot.block.code || ""
+                            ink: Theme.text
+                            line: Theme.textTertiary
+                            fill: Theme.surface
+                            paper: Theme.sunken
+                            font.pixelSize: Theme.small + 1
+                        }
+                    }
+                    CodeBlock {
+                        visible: !chart.valid || chartHolder.showSource
+                        width: parent.width
+                        code: slot.block.code || ""
+                        language: "mermaid"
+                    }
+                    Text {
+                        visible: chart.valid
+                        text: chartHolder.showSource ? qsTr("Show the diagram") : qsTr("Show the source")
+                        color: Theme.textTertiary
+                        font.pixelSize: Theme.small
+                        TapHandler { onTapped: chartHolder.showSource = !chartHolder.showSource }
+                        HoverHandler { cursorShape: Qt.PointingHandCursor }
                     }
                 }
             }

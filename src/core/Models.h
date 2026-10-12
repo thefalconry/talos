@@ -122,6 +122,8 @@ public:
         UnreadRole,
         RunningRole,
         QueuedRole,
+        PinnedRole,
+        ArchivedRole,
     };
 
     explicit ChatListModel(QObject *parent = nullptr);
@@ -142,6 +144,9 @@ public:
 
     std::function<bool(const Chat &)> isUnread;
     std::function<bool(const Chat &)> isRunning;
+    /// Kept by this device only: Talon has no notion of either.
+    std::function<bool(const Chat &)> isPinned;
+    std::function<bool(const Chat &)> isArchived;
 
     static QString sectionFor(qint64 lastActive);
 
@@ -155,18 +160,24 @@ class ChatFilterModel : public QSortFilterProxyModel
     Q_OBJECT
     Q_PROPERTY(QString filter READ filter WRITE setFilter NOTIFY filterChanged)
     Q_PROPERTY(int count READ count NOTIFY countChanged)
+    Q_PROPERTY(bool archived READ archived WRITE setArchived NOTIFY filterChanged)
 public:
     explicit ChatFilterModel(QObject *parent = nullptr);
     QString filter() const { return m_filter; }
     void setFilter(const QString &filter);
+    /// Which of the two lists this shows: the archive, or everything else.
+    bool archived() const { return m_archived; }
+    void setArchived(bool archived);
     int count() const { return rowCount(); }
 signals:
     void filterChanged();
     void countChanged();
 protected:
     bool filterAcceptsRow(int row, const QModelIndex &parent) const override;
+    bool lessThan(const QModelIndex &left, const QModelIndex &right) const override;
 private:
     QString m_filter;
+    bool m_archived = false;
 };
 
 // ── Messages of the open chat ───────────────────────────────────────────────

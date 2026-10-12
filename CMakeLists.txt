@@ -41,6 +41,8 @@ qt_add_library(talos_core STATIC
     src/core/BridgeLinks.h src/core/BridgeLinks.cpp
     src/core/AppLog.h src/core/AppLog.cpp
     src/core/Files.h src/core/Files.cpp
+    src/core/Math.h src/core/Math.cpp
+    src/core/Flow.h src/core/Flow.cpp
     src/core/Crypto.h src/core/Crypto.cpp
     src/mesh/DeviceExec.h src/mesh/DeviceExec.cpp
     src/mesh/MeshService.h src/mesh/MeshService.cpp
@@ -85,6 +87,7 @@ qt_add_executable(talos
     src/app/CodeHighlighter.h src/app/CodeHighlighter.cpp
     src/app/IconItem.h src/app/IconItem.cpp
     src/app/NoNetwork.h src/app/NoNetwork.cpp
+    src/app/FlowChartItem.h src/app/FlowChartItem.cpp
 )
 
 set(TALON_QML_SINGLETONS qml/Theme.qml)

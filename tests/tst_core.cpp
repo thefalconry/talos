@@ -10,9 +10,12 @@
 #include "core/BridgeLinks.h"
 #include "core/Crypto.h"
 #include "core/Files.h"
+#include "core/Flow.h"
 #include "core/Markdown.h"
+#include "core/Math.h"
 #include "core/Models.h"
 #include "core/Profile.h"
+#include "core/SecretStore.h"
 #include "core/Session.h"
 #include "core/SseParser.h"
 #include "core/Store.h"
@@ -302,6 +305,86 @@ private slots:
         // Fenced code is a separate block and is never touched.
         const QVariantList blocks = markdown::split(u"```html\n<img src=x>\n```"_s);
         QCOMPARE(blocks.value(0).toMap().value(u"code"_s).toString(), u"<img src=x>"_s);
+    }
+
+    void mathAsText()
+    {
+        QCOMPARE(math::toUnicode(u"\\alpha^2 + \\frac{1}{n}"_s), u"α² + 1/n"_s);
+        QCOMPARE(math::toUnicode(u"\\frac{a+b}{2c} \\leq \\sqrt{x_1^2 + x_2^2}"_s),
+                 u"(a+b)/2c ≤ √(x₁² + x₂²)"_s);
+        QCOMPARE(math::toUnicode(u"\\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}"_s),
+                 u"∑ᵢ₌₁ⁿ i = (n(n+1))/2"_s);
+        QCOMPARE(math::toUnicode(u"x \\in \\mathbb{R}, \\; f\\colon A \\to B"_s),
+                 u"x ∈ ℝ, f: A → B"_s);
+        QCOMPARE(math::toUnicode(u"e^{i\\pi} + 1 = 0"_s), u"e^(iπ) + 1 = 0"_s);
+        QCOMPARE(math::toUnicode(u"\\text{speed} = \\sin\\theta"_s), u"speed = sinθ"_s);
+        // Malformed input is read as far as it goes, never thrown away.
+        QCOMPARE(math::toUnicode(u"a } b \\frac{1"_s), u"a b 1/"_s);
+
+        const auto prose = [](const QString &text) {
+            return markdown::split(text).value(0).toMap().value(u"text"_s).toString();
+        };
+        QCOMPARE(prose(u"so $x^2 \\geq 0$ holds"_s), u"so x² ≥ 0 holds"_s);
+        QCOMPARE(prose(u"so \\(a \\times b\\) holds"_s), u"so a × b holds"_s);
+        // Money is not mathematics.
+        QCOMPARE(prose(u"it costs $5 and $10 each"_s), u"it costs $5 and $10 each"_s);
+        QCOMPARE(prose(u"pay $20"_s), u"pay $20"_s);
+        // Nor is anything in code.
+        QCOMPARE(prose(u"run `echo $HOME$PATH` now"_s), u"run `echo $HOME$PATH` now"_s);
+
+        const QVariantList blocks = markdown::split(
+            u"Before\n$$\nE = mc^2\n$$\nafter \n\\[ a \\neq b \\]"_s);
+        QCOMPARE(blocks.size(), 4);
+        QCOMPARE(blocks.at(1).toMap().value(u"type"_s).toString(), u"math"_s);
+        QCOMPARE(blocks.at(1).toMap().value(u"text"_s).toString(), u"E = mc²"_s);
+        QCOMPARE(blocks.at(3).toMap().value(u"text"_s).toString(), u"a ≠ b"_s);
+        QCOMPARE(markdown::split(u"$$ a^2 $$"_s).value(0).toMap().value(u"text"_s).toString(),
+                 u"a²"_s);
+    }
+
+    void flowcharts()
+    {
+        flow::Chart chart = flow::parse(
+            u"flowchart TD\n"
+            "  A[Start] --> B{Is it ok?}\n"
+            "  B -->|yes| C(Ship it)\n"
+            "  B -- no --> D[\"Fix: it\"]\n"
+            "  D -.-> B\n"
+            "  C --> E((Done)); style A fill:#f00\n"
+            "  %% a comment\n"
+            "  X & Y ==> E\n"_s);
+        QVERIFY(chart.valid);
+        QVERIFY(!chart.horizontal);
+        QCOMPARE(chart.nodes.size(), 7);
+        QCOMPARE(chart.nodes.at(1).text, u"Is it ok?"_s);
+        QCOMPARE(chart.nodes.at(1).shape, flow::Node::Diamond);
+        QCOMPARE(chart.nodes.at(3).text, u"Fix: it"_s);
+        QCOMPARE(chart.nodes.at(4).shape, flow::Node::Circle);
+        QCOMPARE(chart.edges.size(), 7);
+        QCOMPARE(chart.edges.at(1).label, u"yes"_s);
+        QCOMPARE(chart.edges.at(2).label, u"no"_s);
+        QVERIFY(chart.edges.at(3).dotted);
+        QVERIFY(chart.edges.at(5).thick);
+
+        flow::layout(chart, [](const QString &text) { return QSizeF(8.0 * text.size(), 16); });
+        // The loop D -> B does not push B below D for ever: ranks follow
+        // the arrows once, and every node gets a place inside the drawing.
+        QCOMPARE(chart.nodes.at(0).rank, 0);
+        QVERIFY(chart.nodes.at(2).rank > chart.nodes.at(1).rank);
+        for (const flow::Node &node : chart.nodes) {
+            QVERIFY(node.rect.isValid());
+            QVERIFY(QRectF(QPointF(0, 0), chart.size).contains(node.rect));
+        }
+        for (int i = 0; i < chart.nodes.size(); ++i) {
+            for (int j = i + 1; j < chart.nodes.size(); ++j)
+                QVERIFY(!chart.nodes.at(i).rect.intersects(chart.nodes.at(j).rect));
+        }
+
+        QVERIFY(flow::parse(u"graph LR; A-->B"_s).horizontal);
+        // Other kinds of diagram are left as their source.
+        QVERIFY(!flow::parse(u"sequenceDiagram\n Alice->>Bob: hi"_s).valid);
+        QVERIFY(!flow::parse(u"not a diagram at all"_s).valid);
+        QVERIFY(!flow::parse(QString()).valid);
     }
 
     void markdownBlocks()
@@ -1256,6 +1339,162 @@ private slots:
         QCOMPARE(answers(), 1);
     }
 
+    void deviceControlLimits()
+    {
+        QTemporaryDir allowed, outside, home, mockDir;
+        QVERIFY(QDir(allowed.path()).mkpath(u"sub"_s));
+        {
+            QFile secret(outside.filePath(u"secret"_s));
+            QVERIFY(secret.open(QIODevice::WriteOnly));
+        }
+        // A link inside the allowed folder that leads out of it.
+        QVERIFY(QFile::link(outside.path(), allowed.filePath(u"escape"_s)));
+        const QStringList folders{allowed.path()};
+
+        QVERIFY(MeshService::pathAllowed(allowed.filePath(u"sub/new.txt"_s), folders));
+        QVERIFY(MeshService::pathAllowed(allowed.path(), folders));
+        QVERIFY(!MeshService::pathAllowed(outside.filePath(u"secret"_s), folders));
+        QVERIFY(!MeshService::pathAllowed(allowed.filePath(u"../x"_s), folders));
+        QVERIFY(!MeshService::pathAllowed(allowed.filePath(u"escape/secret"_s), folders));
+        QVERIFY(!MeshService::pathAllowed(allowed.filePath(u"escape/not-yet"_s), folders));
+        // A sibling whose name merely starts the same way is not inside.
+        QVERIFY(!MeshService::pathAllowed(allowed.path() + u"-other/file"_s, folders));
+        QVERIFY(MeshService::pathAllowed(outside.filePath(u"secret"_s), {}));
+
+        Mock mock;
+        if (!mock.start({}, mockDir.path()))
+            QSKIP("node is not available");
+        Store store(home.path());
+        Session session(&store);
+        MeshService mesh(&store, &session);
+        store.setPref(u"meshSharing"_s, true);
+        session.applyProfile(mock.profile());
+        QTRY_VERIFY_WITH_TIMEOUT(mesh.registered(), 10'000);
+        mesh.setDeviceControl(true);
+        store.setPref(u"meshFolders"_s, folders);
+        store.setPref(u"meshAllowExec"_s, false);
+
+        // What is switched off isn't offered...
+        QTRY_VERIFY_WITH_TIMEOUT(!mock.state()["registrations"_L1].toArray().last().toObject()
+                                      ["capabilities"_L1].toVariant().toStringList().contains(u"exec"_s), 5000);
+        QVERIFY(mesh.capabilities().contains(u"read_file"_s));
+
+        const auto run = [&](const QString &id, const QString &name, const QJsonObject &params) {
+            mock.emitEvent({{"kind"_L1, u"device_command"_s}, {"id"_L1, id},
+                            {"deviceId"_L1, mesh.deviceId()}, {"name"_L1, name},
+                            {"params"_L1, params}});
+            QJsonObject found;
+            const auto look = [&] {
+                for (const auto &v : mock.state()["commandResults"_L1].toArray()) {
+                    if (v.toObject()["commandId"_L1].toString() == id)
+                        found = v.toObject();
+                }
+                return !found.isEmpty();
+            };
+            [&] { QTRY_VERIFY_WITH_TIMEOUT(look(), 5000); }();
+            return found;
+        };
+        // ...and is refused if asked for anyway.
+        QVERIFY(!run(u"c1"_s, u"exec"_s, {{"cmd"_L1, u"true"_s}})["ok"_L1].toBool());
+        QVERIFY(run(u"c2"_s, u"list_dir"_s, {{"path"_L1, allowed.path()}})["ok"_L1].toBool());
+        const QJsonObject refused = run(u"c3"_s, u"read_file"_s,
+                                        {{"path"_L1, outside.filePath(u"secret"_s)}});
+        QVERIFY(!refused["ok"_L1].toBool());
+        QVERIFY(refused["message"_L1].toString().contains(u"outside the folders"_s));
+        QVERIFY(!run(u"c4"_s, u"move"_s, {{"from"_L1, allowed.filePath(u"sub"_s)},
+                                          {"to"_L1, outside.filePath(u"sub"_s)}})["ok"_L1].toBool());
+        QVERIFY(QFileInfo::exists(allowed.filePath(u"sub"_s)));
+    }
+
+    void sealedBox()
+    {
+        const crypto::BoxKeys keys = crypto::boxKeys();
+        const QByteArray sealed = crypto::sealTo(keys.publicKey, "a token");
+        QVERIFY(!sealed.contains("a token"));
+        QCOMPARE(crypto::openBox(keys.secretKey, sealed).value_or("<none>"), QByteArray("a token"));
+        // Two sealings of the same thing differ, and neither opens for
+        // another key or after being altered.
+        QVERIFY(crypto::sealTo(keys.publicKey, "a token") != sealed);
+        QVERIFY(!crypto::openBox(crypto::boxKeys().secretKey, sealed));
+        QByteArray bent = sealed;
+        bent[bent.size() - 1] = char(bent.back() ^ 1);
+        QVERIFY(!crypto::openBox(keys.secretKey, bent));
+        QVERIFY(!crypto::openBox(keys.secretKey, sealed.left(20)));
+    }
+
+    void credentialsSealedToTheLock()
+    {
+        QTemporaryDir home;
+        const crypto::BoxKeys keys = crypto::boxKeys();
+        bool unlocked = true;
+        bool sealing = true;
+        const auto arm = [&](Store &store) {
+            store.secretsSealed = [&] { return sealing; };
+            store.secretSeal = [&](const QByteArray &plain) {
+                return crypto::sealTo(keys.publicKey, plain);
+            };
+            store.secretOpen = [&](const QByteArray &sealed) {
+                return unlocked ? crypto::openBox(keys.secretKey, sealed) : std::nullopt;
+            };
+        };
+        const auto onDisk = [&](const QString &id) {
+            return SecretStore::instance().read(u"profile/"_s + id);
+        };
+        QString id;
+        {
+            Store store(home.path());
+            arm(store);
+            Profile p = Profile::defaults();
+            p.local = false;
+            p.host = u"bridge.example.org"_s;
+            p.token = u"s3cret-token"_s;
+            p.clientP12 = "p12-bytes";
+            store.saveProfile(p, true);
+            id = store.activeProfileId();
+            QVERIFY(!onDisk(id).contains("s3cret-token"));
+            QVERIFY(QJsonDocument::fromJson(onDisk(id)).object().contains("sealed"_L1));
+            QCOMPARE(store.activeProfile().token, u"s3cret-token"_s);
+
+            // The app locks while running: what it already read stays
+            // usable, even after something else rewrites the profile list.
+            unlocked = false;
+            store.setProfileEndpoints(id, {Endpoint{u"https://other.example.org"_s, {}, {}}}, u"v1"_s);
+            QVERIFY(!store.secretsLocked());
+            QCOMPARE(store.activeProfile().token, u"s3cret-token"_s);
+            // A credential rotated while locked is put away without the key
+            // that reads it, and keeps the certificate beside it.
+            Profile rotated = store.activeProfile();
+            rotated.token = u"rotated-token"_s;
+            store.saveProfile(rotated, true);
+            QVERIFY(!onDisk(id).contains("rotated-token"));
+        }
+        {
+            // A fresh start, still locked: nothing to read, and saving the
+            // profile must not wipe what is sealed.
+            Store store(home.path());
+            arm(store);
+            QVERIFY(store.secretsLocked());
+            QVERIFY(store.activeProfile().token.isEmpty());
+            QVERIFY(store.activeProfileMeta().certStored);
+            store.saveProfile(store.activeProfile(), true);
+            QVERIFY(QJsonDocument::fromJson(onDisk(id)).object().contains("sealed"_L1));
+
+            unlocked = true;
+            store.invalidateSecrets();
+            QVERIFY(!store.secretsLocked());
+            QCOMPARE(store.activeProfile().token, u"rotated-token"_s);
+            QCOMPARE(store.activeProfile().clientP12, QByteArray("p12-bytes"));
+
+            // The lock is removed: credentials go back to being stored plainly.
+            sealing = false;
+            store.resealSecrets();
+            QVERIFY(onDisk(id).contains("rotated-token"));
+            sealing = true;
+            store.resealSecrets();
+            QVERIFY(!onDisk(id).contains("rotated-token"));
+        }
+    }
+
     void certificateBundleFormats()
     {
         if (!haveOpenssl())
@@ -1533,7 +1772,6 @@ private:
     static void SecretStore_readCheck(const QString &id, bool *found);
 };
 
-#include "core/SecretStore.h"
 
 void CoreTest::SecretStore_readCheck(const QString &id, bool *found)
 {

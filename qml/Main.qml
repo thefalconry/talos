@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 import QtQuick
 import QtQuick.Controls.Basic as C
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import Talos.Native
 
@@ -148,6 +149,23 @@ C.ApplicationWindow {
     function exportChat(chatId) {
         App.copy(App.session.exportMarkdown(chatId))
         toast(qsTr("Conversation copied as Markdown"))
+    }
+
+    function saveChat(chatId) {
+        saveDialog.chatId = chatId
+        saveDialog.currentFile = App.suggestedFile(App.session.chat.title || "chat", "md")
+        saveDialog.open()
+    }
+
+    /// A message of the user's own, back in the box to change and send.
+    function editMessage(text) { chatPage.setDraft(text) }
+
+    /// Send the last question once more. The earlier answer stays in the
+    /// chat: Talon keeps one line of conversation.
+    function askAgain() {
+        const text = App.session.lastUserMessage()
+        if (text !== "")
+            App.session.send(text, [], function (ok) { })
     }
 
     Connections {
@@ -349,6 +367,19 @@ C.ApplicationWindow {
                 onClicked: App.resolveApproval(approvalSheet.request.id, false)
             }
         ]
+    }
+
+    FileDialog {
+        id: saveDialog
+        property string chatId
+        title: qsTr("Save the conversation")
+        fileMode: FileDialog.SaveFile
+        nameFilters: [qsTr("Markdown (*.md)"), qsTr("Text (*.txt)")]
+        defaultSuffix: "md"
+        onAccepted: {
+            root.toast(App.saveText(selectedFile, App.session.exportMarkdown(chatId))
+                       ? qsTr("Conversation saved") : qsTr("Couldn't write that file"))
+        }
     }
 
     Toaster { id: toaster }

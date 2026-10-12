@@ -131,6 +131,10 @@ public:
     /// Leave the app running behind whatever was open before it (a phone's
     /// "back" at the top level). False where the platform has no such thing.
     Q_INVOKABLE bool moveToBackground();
+    /// A starting file name for a save dialog, in the documents folder.
+    Q_INVOKABLE QUrl suggestedFile(const QString &title, const QString &suffix) const;
+    /// A file dialog's URL as a path on this device.
+    Q_INVOKABLE QString localPath(const QUrl &url) const;
     Q_INVOKABLE void quit();
     /// Render the window to a PNG (development and documentation).
     Q_INVOKABLE bool grab(const QString &path);
@@ -153,6 +157,9 @@ private:
                    bool fromAssistant);
     void updateTray();
     void updateKeepAlive();
+    /// Set while the lock is being removed, so credentials are written back
+    /// unsealed although the lock still exists for a moment.
+    bool m_unsealing = false;
 
     Store m_store;
     Session m_session;

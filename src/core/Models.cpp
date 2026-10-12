@@ -376,10 +376,17 @@ QVariant ChatListModel::data(const QModelIndex &index, int role) const
     case TitleRole: return c.title;
     case PreviewRole: return c.preview;
     case LastActiveRole: return c.lastActive;
-    case SectionRole: return sectionFor(c.lastActive);
+    case SectionRole:
+        // Pinned chats lead the list under a heading of their own, except
+        // in the archive, which is one list by date.
+        if (isPinned && isPinned(c) && !(isArchived && isArchived(c)))
+            return u"Pinned"_s;
+        return sectionFor(c.lastActive);
     case UnreadRole: return isUnread ? isUnread(c) : false;
     case RunningRole: return isRunning ? isRunning(c) : false;
     case QueuedRole: return c.hasQueued;
+    case PinnedRole: return isPinned ? isPinned(c) : false;
+    case ArchivedRole: return isArchived ? isArchived(c) : false;
     }
     return {};
 }
@@ -388,7 +395,8 @@ QHash<int, QByteArray> ChatListModel::roleNames() const
 {
     return {{IdRole, "chatId"}, {TitleRole, "title"}, {PreviewRole, "preview"},
             {LastActiveRole, "lastActive"}, {SectionRole, "section"},
-            {UnreadRole, "unread"}, {RunningRole, "running"}, {QueuedRole, "queued"}};
+            {UnreadRole, "unread"}, {RunningRole, "running"}, {QueuedRole, "queued"},
+            {PinnedRole, "pinned"}, {ArchivedRole, "archived"}};
 }
 
 int ChatListModel::indexOf(const QString &id) const
@@ -472,12 +480,14 @@ void ChatListModel::touch(const QString &id)
     if (m_chats.isEmpty())
         return;
     if (id.isEmpty()) {
-        emit dataChanged(index(0), index(int(m_chats.size()) - 1), {UnreadRole, RunningRole});
+        emit dataChanged(index(0), index(int(m_chats.size()) - 1),
+                         {UnreadRole, RunningRole, PinnedRole, ArchivedRole, SectionRole});
         return;
     }
     const int i = indexOf(id);
     if (i >= 0)
-        emit dataChanged(index(i), index(i), {UnreadRole, RunningRole});
+        emit dataChanged(index(i), index(i),
+                         {UnreadRole, RunningRole, PinnedRole, ArchivedRole, SectionRole});
 }
 
 ChatFilterModel::ChatFilterModel(QObject *parent) : QSortFilterProxyModel(parent)
@@ -486,6 +496,35 @@ ChatFilterModel::ChatFilterModel(QObject *parent) : QSortFilterProxyModel(parent
     connect(this, &QAbstractItemModel::rowsRemoved, this, &ChatFilterModel::countChanged);
     connect(this, &QAbstractItemModel::modelReset, this, &ChatFilterModel::countChanged);
     connect(this, &QAbstractItemModel::layoutChanged, this, &ChatFilterModel::countChanged);
+    setDynamicSortFilter(true);
+    sort(0);
+}
+
+void ChatFilterModel::setArchived(bool archived)
+{
+    if (archived == m_archived)
+        return;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
+    beginFilterChange();
+    m_archived = archived;
+    endFilterChange();
+#else
+    m_archived = archived;
+    invalidateFilter();
+#endif
+    emit filterChanged();
+    emit countChanged();
+}
+
+bool ChatFilterModel::lessThan(const QModelIndex &left, const QModelIndex &right) const
+{
+    // Pinned first (outside the archive), then most recent first.
+    const bool lp = !m_archived && left.data(ChatListModel::PinnedRole).toBool();
+    const bool rp = !m_archived && right.data(ChatListModel::PinnedRole).toBool();
+    if (lp != rp)
+        return lp;
+    return left.data(ChatListModel::LastActiveRole).toLongLong()
+        > right.data(ChatListModel::LastActiveRole).toLongLong();
 }
 
 void ChatFilterModel::setFilter(const QString &filter)
@@ -507,9 +546,11 @@ void ChatFilterModel::setFilter(const QString &filter)
 
 bool ChatFilterModel::filterAcceptsRow(int row, const QModelIndex &parent) const
 {
+    const QModelIndex idx = sourceModel()->index(row, 0, parent);
+    if (idx.data(ChatListModel::ArchivedRole).toBool() != m_archived)
+        return false;
     if (m_filter.isEmpty())
         return true;
-    const QModelIndex idx = sourceModel()->index(row, 0, parent);
     return idx.data(ChatListModel::TitleRole).toString().contains(m_filter, Qt::CaseInsensitive)
         || idx.data(ChatListModel::PreviewRole).toString().contains(m_filter, Qt::CaseInsensitive);
 }

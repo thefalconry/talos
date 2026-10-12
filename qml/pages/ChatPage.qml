@@ -106,6 +106,11 @@ Rectangle {
                         onTriggered: modelPicker.open()
                     }
                     TMenuItem {
+                        text: qsTr("Save as a file…")
+                        iconName: "download"
+                        onTriggered: page.win.saveChat(App.session.selectedChatId)
+                    }
+                    TMenuItem {
                         text: qsTr("Copy as Markdown")
                         iconName: "copy"
                         hint: "Ctrl+Shift+E"
@@ -378,6 +383,13 @@ Rectangle {
     }
 
     function openModelPicker() { modelPicker.open() }
+    function setDraft(text) { composer.setText(text) }
+    function acceptShare(text, files) {
+        if (text !== "")
+            composer.setText(text)
+        for (const f of files)
+            composer.attach(f)
+    }
 
     ModelPicker { id: modelPicker }
 
