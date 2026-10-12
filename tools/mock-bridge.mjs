@@ -14,7 +14,8 @@
 //          (where certificates go) · --discovery FILE (write a
 //          native-bridge.json there, like the daemon does) · --slow MS ·
 //          --no-commands (behave like a daemon that predates slash commands) ·
-//          --endpoints JSON (fallback addresses for the register reply)
+//          --endpoints JSON (fallback addresses for the register reply) ·
+//          --busy (a reply's turn makes six tool calls, not one)
 //
 // On start it prints one JSON line: {port, scheme, fingerprint, token, ...}.
 // Test hooks (not part of the protocol): POST /__emit pushes any event to
@@ -224,7 +225,7 @@ seedChat("d_welcome", "Planning the Qt client", 90_000, [
       durationMs: 4200, tokensIn: 1200, tokensOut: 340,
       tools: [
         { id: "toolu_01", name: "Read", input: { file_path: "src/frontend/native/protocol.ts" }, durationMs: 40, output: "export const BRIDGE_PROTOCOL_VERSION = 1;" },
-        { id: "toolu_02", name: "Bash", input: { command: "ls apps/" }, durationMs: 120, output: "companion\nnode" },
+        { id: "toolu_02", name: "Bash", input: { command: "ls apps/", description: "See which clients exist" }, durationMs: 120, output: "companion\nnode" },
       ],
     }],
   ["user", "Here's the diagram I had in mind.", {
@@ -329,10 +330,25 @@ async function runTurn(chatId, userText) {
     await sleep(slow * 4);
   }
   const toolId = `toolu_${nextId()}`;
+  const clock = { command: "date -u +%H:%M", description: "Read the clock" };
+  // --busy: a turn that works harder, to see a run of tool calls fold up.
+  const extra = !flag("busy") ? [] : [
+    { name: "Read", input: { file_path: "src/core/Session.cpp" }, output: "// 2279 lines" },
+    { name: "Bash", input: { command: "cmake --build build", description: "Build the app" }, output: "[170/170] Linking" },
+    { name: "Grep", input: { pattern: "reconnect", path: "src" }, output: "src/core/Session.cpp:127" },
+    { name: "Bash", input: { command: "ctest --test-dir build", description: "Run the tests" }, output: "100% tests passed" },
+    { name: "mcp__mail__send_email", input: { to: "ada@example.org" }, output: "sent" },
+  ].map((t) => ({ ...t, id: `toolu_${nextId()}`, durationMs: slow * 8 }));
   if (!turn.cancelled) {
-    broadcast({ kind: "tool", chatId, id: toolId, name: "Bash", phase: "call", input: { command: "date -u +%H:%M" } });
+    broadcast({ kind: "tool", chatId, id: toolId, name: "Bash", phase: "call", input: clock });
     await sleep(slow * 10);
     broadcast({ kind: "tool", chatId, id: toolId, name: "Bash", phase: "result", output: new Date().toISOString().slice(11, 16) });
+  }
+  for (const t of extra) {
+    if (turn.cancelled) break;
+    broadcast({ kind: "tool", chatId, id: t.id, name: t.name, phase: "call", input: t.input });
+    await sleep(t.durationMs);
+    broadcast({ kind: "tool", chatId, id: t.id, name: t.name, phase: "result", output: t.output });
   }
   const answer =
     `You said: *${userText.trim() || "(a file)"}*\n\n` +
@@ -348,7 +364,7 @@ async function runTurn(chatId, userText) {
   }
   if (sent) {
     addMessage(chatId, "assistant", turn.cancelled ? `${sent.trim()} …` : answer, {
-      tools: [{ id: toolId, name: "Bash", input: { command: "date -u +%H:%M" }, durationMs: slow * 10, output: new Date().toISOString().slice(11, 16) }],
+      tools: [{ id: toolId, name: "Bash", input: clock, durationMs: slow * 10, output: new Date().toISOString().slice(11, 16) }, ...extra],
     });
   }
   chat.context = { known: true, used: chat.context.used + 2100, max: 200000, pct: Math.round((chat.context.used + 2100) / 2000), warn: false };

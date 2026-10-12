@@ -25,6 +25,13 @@ Item {
         triggeredOnStart: true
         onTriggered: live.now = Date.now()
     }
+    /// Which of the three waiting dots is lit: the next one every third
+    /// step of the shared clock.
+    readonly property int beat: Math.floor(Theme.tick / 3) % 3
+    Beat {
+        active: live.waiting && live.Window.visibility !== Window.Hidden
+                && live.Window.visibility !== Window.Minimized
+    }
 
     Column {
         id: body
@@ -124,15 +131,10 @@ Item {
                         height: 6
                         radius: 3
                         color: Theme.accent
-
-                        SequentialAnimation on opacity {
-                            running: live.waiting
-                            loops: Animation.Infinite
-                            PauseAnimation { duration: index * 160 }
-                            NumberAnimation { from: 0.25; to: 1; duration: 320 }
-                            NumberAnimation { from: 1; to: 0.25; duration: 320 }
-                            PauseAnimation { duration: (2 - index) * 160 }
-                        }
+                        // One dot lit at a time, moved on by the shared
+                        // clock, instead of a fade that redraws on every
+                        // frame while the model thinks.
+                        opacity: live.beat === index ? 1 : 0.3
                     }
                 }
             }

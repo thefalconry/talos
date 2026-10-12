@@ -22,7 +22,7 @@ NSString *const kChatKey = @"chat";
 /// Receives what the person did with a notification, on a thread of the
 /// system's, and passes it to Desktop on Qt's.
 @interface TalosNotificationDelegate : NSObject <UNUserNotificationCenterDelegate>
-@property(nonatomic, assign) talos::Desktop *desktop;
+@property(atomic, assign) talos::Desktop *desktop;
 @end
 
 @implementation TalosNotificationDelegate
@@ -119,6 +119,14 @@ void setupNotifications(Desktop *desktop)
     [center setNotificationCategories:[NSSet setWithObjects:chat, answerable, nil]];
 }
 
+void forgetNotifications(Desktop *desktop)
+{
+    // The delegate outlives the app's objects: the system may still call it
+    // while the app is on its way out.
+    if (g_delegate && g_delegate.desktop == desktop)
+        g_delegate.desktop = nullptr;
+}
+
 bool postNotification(const QString &chatId, const QString &title, const QString &body,
                       bool canReply)
 {
@@ -143,6 +151,11 @@ bool postNotification(const QString &chatId, const QString &title, const QString
                                              content:content
                                              trigger:nil];
     UNUserNotificationCenter *center = UNUserNotificationCenter.currentNotificationCenter;
+    // The answer comes later, on a thread of the system's, when the caller's
+    // strings are long gone. A block takes a C++ reference as a reference,
+    // not as a copy, so what it needs is copied here, by name.
+    const QString titleCopy = title;
+    const QString bodyCopy = body;
     // Asks the person the first time; afterwards it only reports the answer.
     [center requestAuthorizationWithOptions:UNAuthorizationOptionAlert | UNAuthorizationOptionSound
                           completionHandler:^(BOOL granted, NSError *error) {
@@ -155,7 +168,7 @@ bool postNotification(const QString &chatId, const QString &title, const QString
         // at all (it is not signed by a developer), which is nobody's
         // choice, so the notification goes the other way.
         const bool refused = error != nil;
-        QMetaObject::invokeMethod(qApp, [refused, title, body] {
+        QMetaObject::invokeMethod(qApp, [refused, title = titleCopy, body = bodyCopy] {
             if (!refused) {
                 static bool said = false;
                 if (!said) {

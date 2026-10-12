@@ -49,6 +49,7 @@ QVariantMap defaultPrefs()
         {u"sidebarOpen"_s, true},
         {u"sidebarWidth"_s, 292},
         {u"showReasoning"_s, true},
+        {u"toolPurposes"_s, true},          // tool calls say what they are for, not what they ran
         {u"language"_s, QString()},          // "" follows the system; else en, es, hi
         // Composer
         {u"sendOnEnter"_s, true},

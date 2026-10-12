@@ -42,6 +42,16 @@ Window {
 
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
     color: "transparent"
+    // Its scroll bar, like the main window's, is drawn from the palette.
+    palette {
+        text: Theme.text
+        mid: Theme.borderStrong
+        dark: Theme.textTertiary
+        highlight: Theme.accent
+        highlightedText: Theme.accentInk
+        link: Theme.accent
+        linkVisited: Theme.accent
+    }
     width: Math.min(620, Screen.width - 40)
     height: card.implicitHeight + 24
     x: Screen.virtualX + Math.round((Screen.width - width) / 2)

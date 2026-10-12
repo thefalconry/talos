@@ -51,6 +51,9 @@ Desktop::Desktop(QObject *parent) : QObject(parent)
 
 Desktop::~Desktop()
 {
+#if defined(Q_OS_MACOS)
+    mac::forgetNotifications(this);
+#endif
     delete m_menu;
     delete m_menuBar;
     if (!m_ringFile.isEmpty())

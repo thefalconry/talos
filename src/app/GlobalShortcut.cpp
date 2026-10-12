@@ -258,6 +258,19 @@ void GlobalShortcut::release() {}
 
 #endif
 
+GlobalShortcut::~GlobalShortcut()
+{
+#if defined(Q_OS_MACOS)
+    // The system's handler was given this object: neither may outlive it.
+    if (g_hotKey)
+        UnregisterEventHotKey(g_hotKey);
+    if (g_handler)
+        RemoveEventHandler(g_handler);
+    g_hotKey = nullptr;
+    g_handler = nullptr;
+#endif
+}
+
 void GlobalShortcut::set(const QString &state, const QString &error)
 {
     m_state = state;

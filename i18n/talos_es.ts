@@ -793,14 +793,6 @@
         <translation>%1: %2</translation>
     </message>
     <message>
-        <source>Used %1</source>
-        <translation>Usó %1</translation>
-    </message>
-    <message>
-        <source>Used %1 tools</source>
-        <translation>Usó %1 herramientas</translation>
-    </message>
-    <message>
         <source>Open</source>
         <translation>Abrir</translation>
     </message>
@@ -1196,6 +1188,14 @@
 
 1. Uno
 2. Dos</translation>
+    </message>
+    <message>
+        <source>Say what tool calls are for</source>
+        <translation>Decir para qué son las llamadas a herramientas</translation>
+    </message>
+    <message>
+        <source>Shows a short note of each call in place of the command it ran: the model&apos;s own reason (“Check which Qt is installed”), or what the call acted on (“Read Session.cpp”). The command is still there when you open the call. Off, calls are counted: “Ran 3 commands”.</source>
+        <translation>Muestra una nota breve de cada llamada en lugar del comando que ejecutó: el motivo que da el propio modelo («Comprobar qué Qt está instalado») o aquello sobre lo que actuó la llamada («Leer Session.cpp»). El comando sigue ahí al abrir la llamada. Desactivado, las llamadas se cuentan: «Ejecutó 3 comandos».</translation>
     </message>
 </context>
 <context>
@@ -2552,6 +2552,150 @@
     <message>
         <source>Error</source>
         <translation>Error</translation>
+    </message>
+    <message>
+        <source>Running a command</source>
+        <translation>Ejecutando un comando</translation>
+    </message>
+    <message>
+        <source>Reading a file</source>
+        <translation>Leyendo un archivo</translation>
+    </message>
+    <message>
+        <source>Editing a file</source>
+        <translation>Editando un archivo</translation>
+    </message>
+    <message>
+        <source>Searching files</source>
+        <translation>Buscando en los archivos</translation>
+    </message>
+    <message>
+        <source>Checking the web</source>
+        <translation>Consultando la web</translation>
+    </message>
+    <message>
+        <source>Running a subtask</source>
+        <translation>Ejecutando una subtarea</translation>
+    </message>
+    <message>
+        <source>Using a tool</source>
+        <translation>Usando una herramienta</translation>
+    </message>
+    <message>
+        <source>ran a command</source>
+        <translation>ejecutó un comando</translation>
+    </message>
+    <message>
+        <source>ran %1 commands</source>
+        <translation>ejecutó %1 comandos</translation>
+    </message>
+    <message>
+        <source>read a file</source>
+        <translation>leyó un archivo</translation>
+    </message>
+    <message>
+        <source>read %1 files</source>
+        <translation>leyó %1 archivos</translation>
+    </message>
+    <message>
+        <source>edited a file</source>
+        <translation>editó un archivo</translation>
+    </message>
+    <message>
+        <source>edited %1 files</source>
+        <translation>editó %1 archivos</translation>
+    </message>
+    <message>
+        <source>searched files</source>
+        <translation>buscó en los archivos</translation>
+    </message>
+    <message>
+        <source>searched files %1 times</source>
+        <translation>buscó en los archivos %1 veces</translation>
+    </message>
+    <message>
+        <source>checked the web</source>
+        <translation>consultó la web</translation>
+    </message>
+    <message>
+        <source>checked the web %1 times</source>
+        <translation>consultó la web %1 veces</translation>
+    </message>
+    <message>
+        <source>ran a subtask</source>
+        <translation>ejecutó una subtarea</translation>
+    </message>
+    <message>
+        <source>ran %1 subtasks</source>
+        <translation>ejecutó %1 subtareas</translation>
+    </message>
+    <message>
+        <source>used %1</source>
+        <translation>usó %1</translation>
+    </message>
+    <message>
+        <source>used %1 tools</source>
+        <translation>usó %1 herramientas</translation>
+    </message>
+    <message>
+        <source>%1 · %2 done</source>
+        <translation>%1 · %2 hechas</translation>
+    </message>
+    <message>
+        <source>%1 and %2 more</source>
+        <translation>%1 y %2 más</translation>
+    </message>
+    <message>
+        <source>%1 failed</source>
+        <translation>%1 fallaron</translation>
+    </message>
+    <message>
+        <source>Hide the tool calls</source>
+        <translation>Ocultar las llamadas a herramientas</translation>
+    </message>
+    <message>
+        <source>Show the tool calls</source>
+        <translation>Mostrar las llamadas a herramientas</translation>
+    </message>
+    <message>
+        <source>Read %1</source>
+        <translation>Leer %1</translation>
+    </message>
+    <message>
+        <source>Read a file</source>
+        <translation>Leer un archivo</translation>
+    </message>
+    <message>
+        <source>Edit %1</source>
+        <translation>Editar %1</translation>
+    </message>
+    <message>
+        <source>Edit a file</source>
+        <translation>Editar un archivo</translation>
+    </message>
+    <message>
+        <source>Search for %1</source>
+        <translation>Buscar %1</translation>
+    </message>
+    <message>
+        <source>Search the files</source>
+        <translation>Buscar en los archivos</translation>
+    </message>
+    <message>
+        <source>Look up %1</source>
+        <translation>Consultar %1</translation>
+    </message>
+    <message>
+        <source>Check the web</source>
+        <translation>Consultar la web</translation>
+    </message>
+    <message>
+        <source>Run a command</source>
+        <translation>Ejecutar un comando</translation>
+    </message>
+    <message>
+        <source>Run a subtask</source>
+        <translation>Ejecutar una subtarea</translation>
     </message>
 </context>
 <context>

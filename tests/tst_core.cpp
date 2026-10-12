@@ -447,6 +447,33 @@ private slots:
         QCOMPARE(m.tokensOut, 340);
         QCOMPARE(m.reactions, QStringList{u"👍"_s});
 
+        // The offline snapshot keeps a short note of each call, enough to
+        // say what it was after a restart, and none of what it read or wrote.
+        Message worked;
+        worked.id = u"7"_s;
+        worked.role = Message::Assistant;
+        ToolCall build;
+        build.id = u"t1"_s;
+        build.name = u"Bash"_s;
+        build.input = {{"command"_L1, u"cmake --build build"_s}, {"description"_L1, u"Build the app"_s}};
+        build.output = u"a very long log that must not be kept"_s;
+        build.error = u"exit 2\nninja: build stopped"_s;
+        build.durationMs = 1200;
+        build.done = true;
+        worked.tools << build;
+        const QJsonObject kept = worked.toSnapshot();
+        const QByteArray keptText = QJsonDocument(kept).toJson();
+        QVERIFY(!keptText.contains("very long log") && !keptText.contains("ninja"));
+        const Message restored = Message::fromJson(kept);
+        QCOMPARE(restored.tools.size(), 1);
+        const QVariantMap row = restored.tools.first().toVariant();
+        QCOMPARE(row.value(u"purpose"_s).toString(), u"Build the app"_s);
+        QCOMPARE(row.value(u"detail"_s).toString(), u"cmake --build build"_s);
+        QCOMPARE(row.value(u"kind"_s).toString(), u"command"_s);
+        QCOMPARE(row.value(u"durationMs"_s).toLongLong(), 1200);
+        QVERIFY(row.value(u"failed"_s).toBool());
+        QCOMPARE(row.value(u"error"_s).toString(), u"exit 2"_s);
+
         const Chat c = Chat::fromJson(f["chat"_L1].toObject());
         QCOMPARE(c.title, u"Protocol design"_s);
         QCOMPARE(c.effort, u"high"_s);
@@ -485,6 +512,68 @@ private slots:
         QCOMPARE(d.value(u"detail"_s).toString(), u"qt sse"_s);
         d = describeTool(u"Bash"_s, {{"command"_L1, u"ls   -la\n/tmp"_s}});
         QCOMPARE(d.value(u"detail"_s).toString(), u"ls -la /tmp"_s);
+        // No stated reason is no reason: the command is never passed off as one.
+        QCOMPARE(d.value(u"purpose"_s).toString(), QString());
+        d = describeTool(u"Bash"_s, {{"command"_L1, u"qmake --version"_s},
+                                     {"description"_L1, u"Check which  Qt\nis installed"_s}});
+        QCOMPARE(d.value(u"detail"_s).toString(), u"qmake --version"_s);
+        QCOMPARE(d.value(u"purpose"_s).toString(), u"Check which Qt is installed"_s);
+        QCOMPARE(d.value(u"kind"_s).toString(), u"command"_s);
+        // A search is known by what it looked for, not by where.
+        d = describeTool(u"Grep"_s, {{"path"_L1, u"src"_s}, {"pattern"_L1, u"reconnect"_s}});
+        QCOMPARE(d.value(u"detail"_s).toString(), u"reconnect"_s);
+    }
+
+    void toolKindsAndSummary()
+    {
+        // The same work under each backend's spelling.
+        QCOMPARE(toolKind(u"Bash"_s), u"command"_s);
+        QCOMPARE(toolKind(u"run_terminal_cmd"_s), u"command"_s);
+        QCOMPARE(toolKind(u"Read"_s), u"read"_s);
+        QCOMPARE(toolKind(u"mcp__fs__read_file"_s), u"read"_s);
+        QCOMPARE(toolKind(u"MultiEdit"_s), u"edit"_s);
+        QCOMPARE(toolKind(u"apply_patch"_s), u"edit"_s);
+        QCOMPARE(toolKind(u"Grep"_s), u"search"_s);
+        QCOMPARE(toolKind(u"WebFetch"_s), u"web"_s);
+        QCOMPARE(toolKind(u"Task"_s), u"agent"_s);
+        QCOMPARE(toolKind(u"mcp__email-tools__search_emails"_s), u"other"_s);
+
+        const auto call = [](const QString &name, const QJsonObject &input, qint64 ms,
+                             bool done = true, const QString &error = {}) {
+            ToolCall t;
+            t.name = name;
+            t.input = input;
+            t.durationMs = ms;
+            t.done = done;
+            t.error = error;
+            return QVariant(t.toVariant());
+        };
+        const QVariantList tools{
+            call(u"Bash"_s, {{"command"_L1, u"ls"_s}, {"description"_L1, u"List the build"_s}}, 300),
+            call(u"Read"_s, {{"file_path"_L1, u"a.cpp"_s}}, 40),
+            call(u"Bash"_s, {{"command"_L1, u"make"_s}, {"description"_L1, u"Build it"_s}}, 1200,
+                 true, u"exit 2"_s),
+            call(u"Bash"_s, {{"command"_L1, u"ls"_s}, {"description"_L1, u"List the build"_s}}, 60),
+            call(u"mcp__mail__send"_s, {}, -1, false),
+        };
+        const QVariantMap sum = summariseTools(tools);
+        QCOMPARE(sum.value(u"total"_s).toInt(), 5);
+        QCOMPARE(sum.value(u"finished"_s).toInt(), 4);
+        QCOMPARE(sum.value(u"failed"_s).toInt(), 1);
+        // In the order the work happened, each kind once.
+        const QVariantList kinds = sum.value(u"kinds"_s).toList();
+        QCOMPARE(kinds.size(), 3);
+        QCOMPARE(kinds.at(0).toMap().value(u"kind"_s).toString(), u"command"_s);
+        QCOMPARE(kinds.at(0).toMap().value(u"count"_s).toInt(), 3);
+        QCOMPARE(kinds.at(1).toMap().value(u"kind"_s).toString(), u"read"_s);
+        QCOMPARE(kinds.at(2).toMap().value(u"kind"_s).toString(), u"other"_s);
+        QCOMPARE(kinds.at(2).toMap().value(u"label"_s).toString(), u"Send"_s);
+        // The call still in flight is the one to name; an unknown duration adds nothing.
+        QCOMPARE(sum.value(u"running"_s).toMap().value(u"name"_s).toString(), u"mcp__mail__send"_s);
+        QCOMPARE(sum.value(u"duration"_s).toString(), formatDuration(1600));
+        // Nothing running once everything has answered, and nothing at all for nothing.
+        QVERIFY(summariseTools(tools.mid(0, 4)).value(u"running"_s).toMap().isEmpty());
+        QCOMPARE(summariseTools({}).value(u"total"_s).toInt(), 0);
     }
 
     void chatListOrderAndFilter()

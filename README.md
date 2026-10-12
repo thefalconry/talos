@@ -21,8 +21,17 @@ daemon's protocol definition rather than ported from the Flutter companion.
 **Chat**
 
 - Chats grouped by day, filter by title, unread markers, rename, delete, reset
-- Live replies: streamed text, the model's reasoning, and each tool call with
-  its input, output, error and duration
+- Live replies: streamed text, the model's reasoning, and the tool calls,
+  folded into one line that says what is happening now and then what it
+  all amounted to ("Ran 3 commands, read 2 files · 4.2 s"). Unfolded, each
+  call shows its input, output, error and duration; a failure unfolds by
+  itself. With "Say what tool calls are for" (Appearance) the line and the
+  calls carry a short note in place of the command: the model's own reason
+  where it gave one ("Check which Qt is installed"), else what the call
+  acted on ("Read Session.cpp"). The notes are read from what the model
+  already sent, on this device: the setting never asks the model for
+  anything, so it costs no tokens, in old chats or new. They are kept in
+  the offline snapshot, so they are there after a restart
 - Markdown with fenced code blocks (copy button, syntax colouring), tables,
   images shown inline, file attachments
 - Attach any files (picker, drag and drop, paste an image); uploads stream
@@ -132,7 +141,13 @@ daemon's protocol definition rather than ported from the Flutter companion.
 
 **The app**
 
-- Light and dark themes, accent colour, text size
+- Light and dark themes, accent colour, text size. The theme reaches the
+  window's title bar, native menus and dialogs, scroll bars, tooltips and
+  selections, and the accent tints the open chat's row, your own messages
+  and the app mark
+- Light on the processor: nothing is redrawn while nothing changes, and
+  the spinners and other "still going" signs step eight times a second on
+  one shared clock instead of animating every frame
 - Notifications, tray, launch at sign-in
 - App lock: a passcode (Argon2id) that covers the window and encrypts the
   cached chats (XChaCha20-Poly1305), with fingerprint unlock on Linux

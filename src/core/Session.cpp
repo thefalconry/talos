@@ -15,6 +15,7 @@
 #include <QJSEngine>
 #include <QJsonDocument>
 #include <QMimeDatabase>
+#include <QElapsedTimer>
 #include <QNetworkInformation>
 #include <QProcess>
 #include <QRegularExpression>
@@ -147,18 +148,24 @@ void Session::watchNetwork()
     if (!net)
         return;
     // Some backends (the Mac's) only learn the state a moment after they
-    // load. Finding out what the network is, is not the network changing,
-    // and must not drop a connection that was just made.
+    // load, and in steps: unknown, then local, then online. Finding out
+    // what the network is, is not the network changing, and must not drop
+    // a connection that was just made.
+    auto settled = std::make_shared<QElapsedTimer>();
+    settled->start();
+    constexpr qint64 kLearningMs = 5000;
     connect(net, &QNetworkInformation::reachabilityChanged, this,
-            [this, last = net->reachability()](QNetworkInformation::Reachability r) mutable {
-        const bool learned = last == QNetworkInformation::Reachability::Unknown;
+            [this, settled, last = net->reachability()](QNetworkInformation::Reachability r) mutable {
+        const bool learned = last == QNetworkInformation::Reachability::Unknown
+            || settled->elapsed() < kLearningMs;
         last = r;
         if (!learned && r != QNetworkInformation::Reachability::Disconnected)
             m_networkDebounce.start();
     });
     connect(net, &QNetworkInformation::transportMediumChanged, this,
-            [this, last = net->transportMedium()](QNetworkInformation::TransportMedium m) mutable {
-        const bool learned = last == QNetworkInformation::TransportMedium::Unknown;
+            [this, settled, last = net->transportMedium()](QNetworkInformation::TransportMedium m) mutable {
+        const bool learned = last == QNetworkInformation::TransportMedium::Unknown
+            || settled->elapsed() < kLearningMs;
         last = m;
         if (!learned)
             m_networkDebounce.start();

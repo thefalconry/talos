@@ -135,7 +135,27 @@ ToolCall ToolCall::fromHistory(const QJsonObject &j)
     t.output = str(j["output"_L1]);
     t.done = true;
     t.durationMs = j["durationMs"_L1].isDouble() ? num(j["durationMs"_L1]) : -1;
+    t.savedDetail = str(j["detail"_L1]);
+    t.savedPurpose = str(j["purpose"_L1]);
     return t;
+}
+
+QJsonObject ToolCall::toSnapshot() const
+{
+    const QVariantMap described = toVariant();
+    QJsonObject o{{"id"_L1, id}, {"name"_L1, name}};
+    const QString detail = described.value(u"detail"_s).toString();
+    const QString purpose = described.value(u"purpose"_s).toString();
+    if (!detail.isEmpty())
+        o["detail"_L1] = detail;
+    if (!purpose.isEmpty())
+        o["purpose"_L1] = purpose;
+    if (durationMs >= 0)
+        o["durationMs"_L1] = durationMs;
+    // That it failed, and the first line of why; not the whole output.
+    if (!error.isEmpty())
+        o["error"_L1] = error.section(u'\n', 0, 0).left(200);
+    return o;
 }
 
 QVariantMap describeTool(const QString &name, const QJsonObject &input)
@@ -161,12 +181,19 @@ QVariantMap describeTool(const QString &name, const QJsonObject &input)
         "pattern"_L1, "description"_L1, "prompt"_L1, "text"_L1, "name"_L1, "id"_L1,
     };
     QString detail;
-    for (const auto key : keys) {
-        const QJsonValue v = input[key];
-        if (v.isString() && !v.toString().trimmed().isEmpty()) {
-            detail = v.toString().simplified();
-            break;
+    // For a search, what was looked for says more than where.
+    if (toolKind(name) == "search"_L1) {
+        for (const auto key : {"pattern"_L1, "query"_L1}) {
+            if (detail.isEmpty())
+                detail = input[key].toString().simplified();
         }
+    }
+    for (const auto key : keys) {
+        if (!detail.isEmpty())
+            break;
+        const QJsonValue v = input[key];
+        if (v.isString() && !v.toString().trimmed().isEmpty())
+            detail = v.toString().simplified();
     }
     if (detail.isEmpty()) {
         for (auto it = input.begin(); it != input.end(); ++it) {
@@ -178,12 +205,113 @@ QVariantMap describeTool(const QString &name, const QJsonObject &input)
     }
     if (detail.size() > 140)
         detail = detail.left(139) + u'…';
-    return {{u"label"_s, label}, {u"group"_s, group}, {u"detail"_s, detail}};
+    // Several tools take a line from the model saying why it is making the
+    // call ("Check which Qt is installed"). That is the model's own account.
+    QString purpose = input["description"_L1].toString().simplified();
+    if (purpose.size() > 140)
+        purpose = purpose.left(139) + u'…';
+    return {{u"label"_s, label}, {u"group"_s, group}, {u"detail"_s, detail},
+            {u"kind"_s, toolKind(name)}, {u"purpose"_s, purpose}};
+}
+
+QString toolKind(const QString &name)
+{
+    // The tool itself, without the MCP server in front, lower-cased and
+    // with the underscores dropped: "mcp__fs__read_file" is "readfile".
+    QString tool = name;
+    if (name.startsWith("mcp__"_L1)) {
+        const QStringList parts = name.mid(5).split(u"__"_s);
+        if (parts.size() >= 2)
+            tool = parts.mid(1).join(QString());
+    }
+    tool = tool.toLower().remove(u'_').remove(u'-');
+    // Every spelling seen so far, across Claude Code, Codex, opencode and
+    // Gemini backends.
+    static const QHash<QString, QString> kinds = [] {
+        const std::pair<QLatin1StringView, QList<QLatin1StringView>> table[] = {
+            {"command"_L1,
+             {"bash"_L1, "shell"_L1, "executecommand"_L1, "deviceexec"_L1, "runcommand"_L1,
+              "execcommand"_L1, "exec"_L1, "localshell"_L1, "commandexecution"_L1,
+              "runterminalcmd"_L1}},
+            {"read"_L1,
+             {"read"_L1, "notebookread"_L1, "viewfile"_L1, "readfile"_L1, "openfile"_L1,
+              "viewcodeitem"_L1, "readmanyfiles"_L1}},
+            {"edit"_L1,
+             {"write"_L1, "edit"_L1, "multiedit"_L1, "notebookedit"_L1, "writefile"_L1,
+              "editfile"_L1, "writetofile"_L1, "createfile"_L1, "applypatch"_L1,
+              "replacefilecontent"_L1, "multireplacefilecontent"_L1, "replace"_L1, "patch"_L1}},
+            {"search"_L1,
+             {"glob"_L1, "grep"_L1, "search"_L1, "grepsearch"_L1, "findbyname"_L1,
+              "codebasesearch"_L1, "filesearch"_L1, "listdir"_L1, "listdirectory"_L1, "ls"_L1,
+              "searchfiles"_L1}},
+            {"web"_L1,
+             {"websearch"_L1, "webfetch"_L1, "fetchurl"_L1, "searchweb"_L1, "readurlcontent"_L1,
+              "fetch"_L1, "googlesearch"_L1}},
+            {"agent"_L1, {"task"_L1, "agent"_L1, "spawnagent"_L1}},
+        };
+        QHash<QString, QString> out;
+        for (const auto &[kind, names] : table) {
+            for (const QLatin1StringView spelled : names)
+                out.insert(spelled, kind);
+        }
+        return out;
+    }();
+    return kinds.value(tool, u"other"_s);
+}
+
+QVariantMap summariseTools(const QVariantList &tools)
+{
+    QVariantList kinds;
+    QVariantMap running;
+    int finished = 0, failed = 0;
+    qint64 spent = 0;
+    for (const QVariant &row : tools) {
+        const QVariantMap tool = row.toMap();
+        const bool bad = tool.value(u"failed"_s).toBool();
+        if (bad)
+            ++failed;
+        if (bad || tool.value(u"done"_s).toBool())
+            ++finished;
+        else
+            running = tool; // the latest one in flight is the one to name
+        spent += qMax<qint64>(0, tool.value(u"durationMs"_s).toLongLong());
+
+        const QString kind = tool.value(u"kind"_s).toString();
+        bool counted = false;
+        for (QVariant &entry : kinds) {
+            QVariantMap bucket = entry.toMap();
+            if (bucket.value(u"kind"_s).toString() != kind)
+                continue;
+            bucket[u"count"_s] = bucket.value(u"count"_s).toInt() + 1;
+            entry = bucket;
+            counted = true;
+            break;
+        }
+        if (!counted) {
+            kinds << QVariantMap{{u"kind"_s, kind}, {u"count"_s, 1},
+                                 {u"label"_s, tool.value(u"label"_s)}};
+        }
+    }
+    return {
+        {u"kinds"_s, kinds},
+        {u"running"_s, running},
+        {u"finished"_s, finished},
+        {u"failed"_s, failed},
+        {u"total"_s, int(tools.size())},
+        {u"duration"_s, spent > 0 ? formatDuration(spent) : QString()},
+    };
 }
 
 QVariantMap ToolCall::toVariant() const
 {
     QVariantMap m = describeTool(name, input);
+    // Restored from the snapshot: the input is gone, its summary is not.
+    if (input.isEmpty()) {
+        if (!savedDetail.isEmpty())
+            m[u"detail"_s] = savedDetail;
+        if (!savedPurpose.isEmpty())
+            m[u"purpose"_s] = savedPurpose;
+    }
     m[u"id"_s] = id;
     m[u"name"_s] = name;
     m[u"done"_s] = done;
@@ -192,6 +320,7 @@ QVariantMap ToolCall::toVariant() const
     m[u"output"_s] = output;
     m[u"startedMs"_s] = startedMs;
     m[u"duration"_s] = durationMs >= 0 ? formatDuration(durationMs) : QString();
+    m[u"durationMs"_s] = durationMs;
     m[u"input"_s] = input.isEmpty()
         ? QString()
         : QString::fromUtf8(QJsonDocument(input).toJson(QJsonDocument::Indented)).trimmed();
@@ -239,6 +368,12 @@ QJsonObject Message::toSnapshot() const
         for (const Attachment &a : attachments)
             arr << a.toJson();
         o["attachments"_L1] = arr;
+    }
+    if (!tools.isEmpty()) {
+        QJsonArray arr;
+        for (const ToolCall &t : tools)
+            arr << t.toSnapshot();
+        o["tools"_L1] = arr;
     }
     if (durationMs > 0)
         o["durationMs"_L1] = durationMs;
@@ -720,6 +855,7 @@ TurnState::TurnState(QObject *parent) : QObject(parent)
     m_frame.setSingleShot(true);
     m_frame.setInterval(33);
     connect(&m_frame, &QTimer::timeout, this, &TurnState::changed);
+    connect(this, &TurnState::changed, this, &TurnState::syncTools);
 }
 
 void TurnState::show(const Data *data)
@@ -745,14 +881,41 @@ QVariantList TurnState::blocks() const
     return m_data ? markdown::split(m_data->draft) : QVariantList();
 }
 
+size_t TurnState::toolsMark() const
+{
+    if (!m_data)
+        return 0;
+    // Everything a row shows that can change after the call is listed.
+    size_t mark = qHash(m_data->tools.size(), size_t(m_data));
+    for (const ToolCall &t : m_data->tools) {
+        mark = qHashMulti(mark, t.id, t.done, t.error.size(), t.output.size(), t.durationMs,
+                          t.input.size());
+    }
+    return mark | 1; // never the "no turn" mark
+}
+
+void TurnState::syncTools()
+{
+    const size_t mark = toolsMark();
+    if (mark == m_toolsAnnounced)
+        return;
+    m_toolsAnnounced = mark;
+    emit toolsChanged();
+}
+
 QVariantList TurnState::tools() const
 {
-    QVariantList out;
-    if (m_data) {
-        for (const ToolCall &t : m_data->tools)
-            out << t.toVariant();
+    // Built once per change, not once per reader per frame.
+    const size_t mark = toolsMark();
+    if (mark != m_toolRowsMark) {
+        m_toolRowsMark = mark;
+        m_toolRows.clear();
+        if (m_data) {
+            for (const ToolCall &t : m_data->tools)
+                m_toolRows << t.toVariant();
+        }
     }
-    return out;
+    return m_toolRows;
 }
 
 } // namespace talos

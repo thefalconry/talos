@@ -82,6 +82,14 @@ Pane {
                 onToggled: App.prefs.showReasoning = checked
             }
         }
+        SettingRow {
+            title: qsTr("Say what tool calls are for")
+            subtitle: qsTr("Shows a short note of each call in place of the command it ran: the model's own reason (“Check which Qt is installed”), or what the call acted on (“Read Session.cpp”). The command is still there when you open the call. Off, calls are counted: “Ran 3 commands”.")
+            TSwitch {
+                checked: App.prefs.toolPurposes
+                onToggled: App.prefs.toolPurposes = checked
+            }
+        }
     }
 
     // A live sample, so a change is seen without leaving the page.

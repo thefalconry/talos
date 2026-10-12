@@ -22,7 +22,8 @@ QtObject {
     readonly property color sunken: dark ? "#1C1B1A" : "#F1EFE8"
     readonly property color hover: dark ? "#14FFFFFF" : "#0D000000"
     readonly property color pressed: dark ? "#22FFFFFF" : "#17000000"
-    readonly property color selected: dark ? "#1FFFFFFF" : "#14000000"
+    // The row that is open or chosen wears the accent, faintly.
+    readonly property color selected: Qt.rgba(accent.r, accent.g, accent.b, dark ? 0.20 : 0.13)
     readonly property color border: dark ? "#42413D" : "#E3DFD3"
     readonly property color borderStrong: dark ? "#5A5852" : "#CFCABB"
     readonly property color scrim: dark ? "#99000000" : "#59000000"
@@ -31,7 +32,16 @@ QtObject {
     readonly property color textSecondary: dark ? "#B9B6AA" : "#66635A"
     readonly property color textTertiary: dark ? "#8B887E" : "#928E82"
     readonly property color accentInk: "#FFFFFF"
-    readonly property color userBubble: dark ? "#3A3936" : "#EFECE2"
+    // Your own messages: the neutral bubble with a breath of the accent.
+    readonly property color userBubble: Qt.tint(dark ? "#3A3936" : "#EFECE2",
+                                                Qt.rgba(accent.r, accent.g, accent.b, dark ? 0.12 : 0.08))
+    // A toast is the theme turned inside out, so it stands off the page.
+    readonly property color toast: dark ? "#F3F1E9" : "#2B2A27"
+    readonly property color toastText: dark ? "#1F1E1B" : "#F3F1E9"
+    // The app mark: its tile, and the claw in the accent, lifted a little
+    // so it reads on the dark tile.
+    readonly property color markTile: "#1F1D1A"
+    readonly property color mark: Qt.lighter(accent, 1.18)
 
     readonly property color danger: dark ? "#EC7D6F" : "#C0392B"
     readonly property color success: dark ? "#7CC48E" : "#2E7D4F"
@@ -42,6 +52,26 @@ QtObject {
                                  : Qt.platform.os === "osx" ? "Menlo" : "monospace"
     readonly property string serif: Qt.platform.os === "windows" || Qt.platform.os === "osx"
                                     ? "Georgia" : "serif"
+
+    /// The colours the system's own parts are drawn in: the scroll bars,
+    /// tooltips and selections of the stock controls, links in rich text,
+    /// and anything Qt draws that is not one of this app's views.
+    readonly property var system: ({
+        "dark": dark, "window": bg, "base": surface, "alternate": sunken, "raised": raised,
+        "text": text, "secondary": textSecondary, "tertiary": textTertiary,
+        "border": border, "borderStrong": borderStrong,
+        "accent": accent, "accentInk": accentInk
+    })
+
+    // The one slow clock that everything "still going" steps on; see Beat.
+    property int beats: 0
+    property int tick: 0
+    readonly property Timer clock: Timer {
+        interval: 125
+        repeat: true
+        running: theme.beats > 0
+        onTriggered: theme.tick = (theme.tick + 1) % 240
+    }
 
     function fs(px) { return Math.round(px * scale) }
     readonly property int small: fs(12)

@@ -18,6 +18,9 @@ bool notificationsAvailable();
 /// or replied to: @p desktop's openChatRequested and replyRequested.
 void setupNotifications(Desktop *desktop);
 
+/// @p desktop is going away: nothing may be passed to it any more.
+void forgetNotifications(Desktop *desktop);
+
 /// Post a notification. With a @p chatId, clicking it opens that chat and,
 /// when @p canReply, an answer can be typed into it. The first one makes
 /// macOS ask whether Talos may notify at all. False when unavailable.

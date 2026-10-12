@@ -24,7 +24,7 @@ Item {
         width: Math.min(label.implicitWidth + 32, parent.width - 32)
         height: label.implicitHeight + 20
         radius: 12
-        color: Theme.dark ? "#F3F1E9" : "#2B2A27"
+        color: Theme.toast
         opacity: 0
         visible: opacity > 0
 
@@ -40,7 +40,7 @@ Item {
             width: Math.min(implicitWidth, root.width - 64)
             wrapMode: Text.Wrap
             horizontalAlignment: Text.AlignHCenter
-            color: Theme.dark ? "#1F1E1B" : "#F3F1E9"
+            color: Theme.toastText
             font.pixelSize: Theme.body
         }
     }

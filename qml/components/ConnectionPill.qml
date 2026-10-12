@@ -48,13 +48,16 @@ Item {
                  : root.conn === Session.Error && App.session.connFatal ? Theme.danger
                  : Theme.warning
 
-            SequentialAnimation on opacity {
-                running: root.conn === Session.Connecting
-                         || (root.conn === Session.Error && !App.session.connFatal)
-                loops: Animation.Infinite
-                alwaysRunToEnd: true
-                NumberAnimation { to: 0.3; duration: 650 }
-                NumberAnimation { to: 1; duration: 650 }
+            // Blinks rather than fades while a connection is being made:
+            // a retry can go on for hours, and a fade would have the window
+            // redrawn on every frame of them.
+            opacity: blink.active && Math.floor(Theme.tick / 5) % 2 === 1 ? 0.35 : 1
+            Beat {
+                id: blink
+                active: (root.conn === Session.Connecting
+                         || (root.conn === Session.Error && !App.session.connFatal))
+                        && root.Window.visibility !== Window.Hidden
+                        && root.Window.visibility !== Window.Minimized
             }
         }
         Text {

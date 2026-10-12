@@ -120,9 +120,11 @@ public:
     Q_INVOKABLE void forgetEverything();
 
     // ── Small utilities for the views ───────────────────────────────────────
-    /// Links inside rich text take their colour from the application
-    /// palette, so the accent is pushed there.
-    Q_INVOKABLE void setLinkColor(const QColor &color);
+    /// The theme, handed to what is drawn from the application's palette
+    /// rather than by this app's views: links in rich text, and Qt's
+    /// widgets. @p colors is Theme.system. (The windows give the same
+    /// colours to their stock controls themselves; see Main.qml.)
+    Q_INVOKABLE void setSystemColors(const QVariantMap &colors);
     Q_INVOKABLE void copy(const QString &text);
     Q_INVOKABLE QString clipboardText() const;
     Q_INVOKABLE bool clipboardHasImage() const;
@@ -137,6 +139,8 @@ public:
     /// Leave the app running behind whatever was open before it (a phone's
     /// "back" at the top level). False where the platform has no such thing.
     Q_INVOKABLE bool moveToBackground();
+    /// What a run of tool calls amounts to; see summariseTools().
+    Q_INVOKABLE QVariantMap toolSummary(const QVariantList &tools) const;
     /// @p text with the shortcuts in it written the way this system's
     /// keyboard has them: "Ctrl+K" as it stands, or "⌘K" on a Mac.
     Q_INVOKABLE QString keys(const QString &text) const;
@@ -180,6 +184,9 @@ private:
     void updateTray();
     void updateKeepAlive();
     void applyLanguage();
+    /// Light or dark as chosen, for what the system itself draws: the
+    /// window's title bar, native menus and file dialogs.
+    void applyColorScheme();
     void takeShared();
     QTimer m_uiBeat;
     QElapsedTimer m_attached; ///< running since the window was handed over

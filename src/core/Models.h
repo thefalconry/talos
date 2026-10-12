@@ -38,9 +38,17 @@ struct ToolCall {
     bool done = false;
     qint64 startedMs = 0;
     qint64 durationMs = -1; ///< -1 while unknown
+    /// What the call acted on and what it was for, as kept in the offline
+    /// snapshot, which leaves the full input and output out. They stand in
+    /// for the input until the daemon's own history has been read again.
+    QString savedDetail;
+    QString savedPurpose;
 
     static ToolCall fromHistory(const QJsonObject &j);
     QVariantMap toVariant() const;
+    /// The short record kept in the offline snapshot: enough to say what
+    /// the call was, never what it read or printed.
+    QJsonObject toSnapshot() const;
 };
 
 struct Message {
@@ -104,8 +112,20 @@ QString unescapeHtml(const QString &text);
 QString formatBytes(qint64 bytes);
 QString formatDuration(qint64 ms);
 QString formatCount(qint64 n);
-/// A short human label for a tool call: what it is and what it acts on.
+/// A short human label for a tool call: what it is (`label`, `group`), what
+/// it acts on (`detail`), the sort of work it is (`kind`, see toolKind) and,
+/// when the model said so itself, what it is for (`purpose`).
 QVariantMap describeTool(const QString &name, const QJsonObject &input);
+/// The sort of work a tool does, told from its name: command, read, edit,
+/// search, web, agent or other. Each backend spells its tools differently.
+QString toolKind(const QString &name);
+/// What a run of tool calls (rows from ToolCall::toVariant()) amounts to,
+/// for a single line that stands in for all of them:
+///   `kinds`     `[{kind, count, label}]` in order of first appearance
+///   `running`   the call still in flight (the latest), or an empty map
+///   `finished`, `failed`, `total`  counts
+///   `duration`  the time the finished calls took together, formatted
+QVariantMap summariseTools(const QVariantList &tools);
 
 // ── Chat list ───────────────────────────────────────────────────────────────
 
@@ -239,7 +259,7 @@ class TurnState : public QObject
     Q_PROPERTY(QString text READ text NOTIFY changed)
     Q_PROPERTY(QVariantList blocks READ blocks NOTIFY changed)
     Q_PROPERTY(QString reasoning READ reasoning NOTIFY changed)
-    Q_PROPERTY(QVariantList tools READ tools NOTIFY changed)
+    Q_PROPERTY(QVariantList tools READ tools NOTIFY toolsChanged)
     Q_PROPERTY(qint64 startedMs READ startedMs NOTIFY changed)
 public:
     struct Data {
@@ -275,10 +295,21 @@ public:
 
 signals:
     void changed();
+    /// A tool call began, answered or failed. Kept apart from `changed`,
+    /// which fires for every frame of streamed text: the rows are costly to
+    /// build and nothing about them moves while the reply is being written.
+    void toolsChanged();
 
 private:
+    /// A cheap mark of the calls' state: it differs when any row would.
+    size_t toolsMark() const;
+    void syncTools();
+
     const Data *m_data = nullptr;
     QTimer m_frame;
+    mutable QVariantList m_toolRows;
+    mutable size_t m_toolRowsMark = 0;
+    size_t m_toolsAnnounced = 0;
 };
 
 } // namespace talos

@@ -30,6 +30,7 @@ class GlobalShortcut : public QObject
     Q_PROPERTY(QString error READ error NOTIFY changed)
 public:
     explicit GlobalShortcut(QObject *parent = nullptr);
+    ~GlobalShortcut() override;
 
     bool available() const { return m_available; }
     /// off | binding | bound | failed

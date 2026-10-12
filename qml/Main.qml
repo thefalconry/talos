@@ -15,6 +15,30 @@ C.ApplicationWindow {
     minimumWidth: 340
     minimumHeight: 460
     color: Theme.bg
+    // The stock controls (scroll bars, tooltips, selections) are drawn from
+    // the window's palette, so the window wears the theme too.
+    palette {
+        window: Theme.bg
+        windowText: Theme.text
+        base: Theme.surface
+        alternateBase: Theme.sunken
+        text: Theme.text
+        button: Theme.surface
+        buttonText: Theme.text
+        brightText: Theme.accentInk
+        placeholderText: Theme.textTertiary
+        toolTipBase: Theme.raised
+        toolTipText: Theme.text
+        light: Theme.raised
+        midlight: Theme.border
+        mid: Theme.borderStrong
+        dark: Theme.textTertiary
+        highlight: Theme.accent
+        highlightedText: Theme.accentInk
+        link: Theme.accent
+        linkVisited: Theme.accent
+        accent: Theme.accent
+    }
     // A locked app does not name the open conversation in the task switcher.
     title: App.session.chat.title && !App.lock.locked
            ? App.session.chat.title + " · " + App.session.botName : App.session.botName
@@ -29,11 +53,13 @@ C.ApplicationWindow {
     onNarrowChanged: App.session.narrow = narrow
     Component.onCompleted: {
         App.session.narrow = narrow
-        App.setLinkColor(Theme.accent)
+        App.setSystemColors(Theme.system)
     }
     Connections {
         target: Theme
-        function onAccentChanged() { App.setLinkColor(Theme.accent) }
+        // Light or dark, or another accent: the parts the system draws
+        // (scroll bars, tooltips, links, the title bar) follow.
+        function onSystemChanged() { App.setSystemColors(Theme.system) }
     }
 
     onClosing: close => {

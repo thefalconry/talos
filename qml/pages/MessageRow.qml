@@ -75,54 +75,13 @@ Item {
             }
         }
 
-        // Tools the assistant used on the way to this reply.
-        Column {
-            id: toolBlock
-            visible: !row.mine && !row.note && row.tools.length > 0
+        // Tools the assistant used on the way to this reply, folded into
+        // one line.
+        Loader {
             width: parent.width
-            property bool open: false
-
-            Rectangle {
-                width: toolSummary.implicitWidth + 20
-                height: 30
-                radius: 8
-                color: toolTap.pressed ? Theme.pressed : toolHover.hovered ? Theme.hover : "transparent"
-
-                Row {
-                    id: toolSummary
-                    anchors.centerIn: parent
-                    spacing: 7
-
-                    Icon {
-                        name: "tool"
-                        size: 14
-                        color: Theme.textTertiary
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                    Text {
-                        text: row.tools.length === 1
-                              ? qsTr("Used %1").arg(row.tools[0].label)
-                              : qsTr("Used %1 tools").arg(row.tools.length)
-                        color: Theme.textSecondary
-                        font.pixelSize: Theme.small + 1
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                    Icon {
-                        name: toolBlock.open ? "chevron-up" : "chevron-down"
-                        size: 13
-                        color: Theme.textTertiary
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                }
-                HoverHandler { id: toolHover; cursorShape: Qt.PointingHandCursor }
-                TapHandler { id: toolTap; onTapped: toolBlock.open = !toolBlock.open }
-            }
-            Loader {
-                width: parent.width
-                active: toolBlock.open
-                visible: active
-                sourceComponent: ToolList { tools: row.tools }
-            }
+            active: !row.mine && !row.note && row.tools.length > 0
+            visible: active
+            sourceComponent: ToolList { tools: row.tools }
         }
 
         // Attached images.

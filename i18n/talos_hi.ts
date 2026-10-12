@@ -793,14 +793,6 @@
         <translation>%1: %2</translation>
     </message>
     <message>
-        <source>Used %1</source>
-        <translation>%1 इस्तेमाल किया</translation>
-    </message>
-    <message>
-        <source>Used %1 tools</source>
-        <translation>%1 टूल इस्तेमाल किए</translation>
-    </message>
-    <message>
         <source>Open</source>
         <translation>खोलें</translation>
     </message>
@@ -1196,6 +1188,14 @@
 
 1. एक
 2. दो</translation>
+    </message>
+    <message>
+        <source>Say what tool calls are for</source>
+        <translation>बताएँ कि टूल कॉल किसलिए हैं</translation>
+    </message>
+    <message>
+        <source>Shows a short note of each call in place of the command it ran: the model&apos;s own reason (“Check which Qt is installed”), or what the call acted on (“Read Session.cpp”). The command is still there when you open the call. Off, calls are counted: “Ran 3 commands”.</source>
+        <translation>चलाई गई कमांड की जगह हर कॉल का छोटा नोट दिखाता है: मॉडल का अपना बताया कारण (“देखें कि कौन-सा Qt इंस्टॉल है”), या वह जिस पर कॉल ने काम किया (“Session.cpp पढ़ें”)। कॉल खोलने पर कमांड तब भी वहीं रहती है। बंद होने पर कॉल गिने जाते हैं: “3 कमांड चलाईं”।</translation>
     </message>
 </context>
 <context>
@@ -2552,6 +2552,150 @@
     <message>
         <source>Error</source>
         <translation>त्रुटि</translation>
+    </message>
+    <message>
+        <source>Running a command</source>
+        <translation>कमांड चल रही है</translation>
+    </message>
+    <message>
+        <source>Reading a file</source>
+        <translation>फ़ाइल पढ़ी जा रही है</translation>
+    </message>
+    <message>
+        <source>Editing a file</source>
+        <translation>फ़ाइल बदली जा रही है</translation>
+    </message>
+    <message>
+        <source>Searching files</source>
+        <translation>फ़ाइलों में खोज हो रही है</translation>
+    </message>
+    <message>
+        <source>Checking the web</source>
+        <translation>वेब देखा जा रहा है</translation>
+    </message>
+    <message>
+        <source>Running a subtask</source>
+        <translation>उप-कार्य चल रहा है</translation>
+    </message>
+    <message>
+        <source>Using a tool</source>
+        <translation>टूल इस्तेमाल हो रहा है</translation>
+    </message>
+    <message>
+        <source>ran a command</source>
+        <translation>एक कमांड चलाई</translation>
+    </message>
+    <message>
+        <source>ran %1 commands</source>
+        <translation>%1 कमांड चलाईं</translation>
+    </message>
+    <message>
+        <source>read a file</source>
+        <translation>एक फ़ाइल पढ़ी</translation>
+    </message>
+    <message>
+        <source>read %1 files</source>
+        <translation>%1 फ़ाइलें पढ़ीं</translation>
+    </message>
+    <message>
+        <source>edited a file</source>
+        <translation>एक फ़ाइल बदली</translation>
+    </message>
+    <message>
+        <source>edited %1 files</source>
+        <translation>%1 फ़ाइलें बदलीं</translation>
+    </message>
+    <message>
+        <source>searched files</source>
+        <translation>फ़ाइलों में खोजा</translation>
+    </message>
+    <message>
+        <source>searched files %1 times</source>
+        <translation>फ़ाइलों में %1 बार खोजा</translation>
+    </message>
+    <message>
+        <source>checked the web</source>
+        <translation>वेब देखा</translation>
+    </message>
+    <message>
+        <source>checked the web %1 times</source>
+        <translation>वेब %1 बार देखा</translation>
+    </message>
+    <message>
+        <source>ran a subtask</source>
+        <translation>एक उप-कार्य चलाया</translation>
+    </message>
+    <message>
+        <source>ran %1 subtasks</source>
+        <translation>%1 उप-कार्य चलाए</translation>
+    </message>
+    <message>
+        <source>used %1</source>
+        <translation>%1 इस्तेमाल किया</translation>
+    </message>
+    <message>
+        <source>used %1 tools</source>
+        <translation>%1 टूल इस्तेमाल किए</translation>
+    </message>
+    <message>
+        <source>%1 · %2 done</source>
+        <translation>%1 · %2 पूरे</translation>
+    </message>
+    <message>
+        <source>%1 and %2 more</source>
+        <translation>%1 और %2 और</translation>
+    </message>
+    <message>
+        <source>%1 failed</source>
+        <translation>%1 विफल</translation>
+    </message>
+    <message>
+        <source>Hide the tool calls</source>
+        <translation>टूल कॉल छिपाएँ</translation>
+    </message>
+    <message>
+        <source>Show the tool calls</source>
+        <translation>टूल कॉल दिखाएँ</translation>
+    </message>
+    <message>
+        <source>Read %1</source>
+        <translation>%1 पढ़ें</translation>
+    </message>
+    <message>
+        <source>Read a file</source>
+        <translation>फ़ाइल पढ़ें</translation>
+    </message>
+    <message>
+        <source>Edit %1</source>
+        <translation>%1 बदलें</translation>
+    </message>
+    <message>
+        <source>Edit a file</source>
+        <translation>फ़ाइल बदलें</translation>
+    </message>
+    <message>
+        <source>Search for %1</source>
+        <translation>%1 खोजें</translation>
+    </message>
+    <message>
+        <source>Search the files</source>
+        <translation>फ़ाइलों में खोजें</translation>
+    </message>
+    <message>
+        <source>Look up %1</source>
+        <translation>%1 देखें</translation>
+    </message>
+    <message>
+        <source>Check the web</source>
+        <translation>वेब देखें</translation>
+    </message>
+    <message>
+        <source>Run a command</source>
+        <translation>कमांड चलाएँ</translation>
+    </message>
+    <message>
+        <source>Run a subtask</source>
+        <translation>उप-कार्य चलाएँ</translation>
     </message>
 </context>
 <context>

@@ -147,6 +147,7 @@ App::App(QObject *parent)
     connect(&m_desktop, &Desktop::quitRequested, this, &App::quit);
     // Before any of the interface is built.
     applyLanguage();
+    applyColorScheme();
     m_uiBeat.setInterval(10'000);
     connect(&m_uiBeat, &QTimer::timeout, this,
             [this] { platform::markUiActive(m_store.dataDir(), true); });
@@ -199,6 +200,8 @@ App::App(QObject *parent)
             updateKeepAlive();
         else if (key == "language"_L1)
             applyLanguage();
+        else if (key == "theme"_L1)
+            applyColorScheme();
         else if (key == "quickShortcut"_L1)
             m_store.prefBool(key) ? m_shortcut.bind() : m_shortcut.release();
         // Whether credentials may stay sealed depends on these two.
@@ -704,12 +707,55 @@ void App::handleExternalLink(const QString &link)
 
 // ── Utilities ───────────────────────────────────────────────────────────────
 
-void App::setLinkColor(const QColor &color)
+void App::setSystemColors(const QVariantMap &colors)
 {
+    const auto color = [&colors](QLatin1StringView name) {
+        return colors.value(name).value<QColor>();
+    };
+    const QColor text = color("text"_L1), faint = color("tertiary"_L1);
+    const QColor accent = color("accent"_L1);
     QPalette palette = QGuiApplication::palette();
-    palette.setColor(QPalette::Link, color);
-    palette.setColor(QPalette::LinkVisited, color);
+    for (const auto group : {QPalette::Active, QPalette::Inactive, QPalette::Disabled}) {
+        // What is switched off is written in the faintest ink.
+        const QColor ink = group == QPalette::Disabled ? faint : text;
+        palette.setColor(group, QPalette::Window, color("window"_L1));
+        palette.setColor(group, QPalette::WindowText, ink);
+        palette.setColor(group, QPalette::Base, color("base"_L1));
+        palette.setColor(group, QPalette::AlternateBase, color("alternate"_L1));
+        palette.setColor(group, QPalette::Text, ink);
+        palette.setColor(group, QPalette::Button, color("base"_L1));
+        palette.setColor(group, QPalette::ButtonText, ink);
+        palette.setColor(group, QPalette::BrightText, color("accentInk"_L1));
+        palette.setColor(group, QPalette::PlaceholderText, faint);
+        palette.setColor(group, QPalette::ToolTipBase, color("raised"_L1));
+        palette.setColor(group, QPalette::ToolTipText, text);
+        // The stock scroll bar is drawn in Mid, and in Dark while dragged;
+        // a tooltip's edge is Dark too.
+        palette.setColor(group, QPalette::Light, color("raised"_L1));
+        palette.setColor(group, QPalette::Midlight, color("border"_L1));
+        palette.setColor(group, QPalette::Mid, color("borderStrong"_L1));
+        palette.setColor(group, QPalette::Dark, faint);
+        palette.setColor(group, QPalette::Highlight, accent);
+        palette.setColor(group, QPalette::HighlightedText, color("accentInk"_L1));
+        palette.setColor(group, QPalette::Accent, accent);
+        palette.setColor(group, QPalette::Link, accent);
+        palette.setColor(group, QPalette::LinkVisited, accent);
+    }
     QGuiApplication::setPalette(palette);
+}
+
+void App::applyColorScheme()
+{
+    // With "System" the choice is handed back, and the system's own change
+    // of mind is followed again.
+    const QString theme = m_store.prefString(u"theme"_s);
+    QStyleHints *hints = qApp->styleHints();
+    if (theme == "dark"_L1)
+        hints->setColorScheme(Qt::ColorScheme::Dark);
+    else if (theme == "light"_L1)
+        hints->setColorScheme(Qt::ColorScheme::Light);
+    else
+        hints->unsetColorScheme();
 }
 
 void App::copy(const QString &text)
@@ -799,6 +845,11 @@ void App::showWindow()
         m_window->showNormal();
     m_window->raise();
     m_window->requestActivate();
+}
+
+QVariantMap App::toolSummary(const QVariantList &tools) const
+{
+    return summariseTools(tools);
 }
 
 QString App::keys(const QString &text) const
