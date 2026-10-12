@@ -974,6 +974,63 @@ private slots:
         QVERIFY(impostor.state()["streams"_L1].toArray().isEmpty());
     }
 
+    void commandsOnADaemonWithoutThem()
+    {
+        QTemporaryDir home, mockDir;
+        Mock mock;
+        if (!mock.start({u"--token"_s, u"tok"_s, u"--no-commands"_s}, mockDir.path()))
+            QSKIP("node is not available");
+        Store store(home.path());
+        Session session(&store);
+        QSignalSpy picker(&session, &Session::modelPickerRequested);
+        session.applyProfile(mock.profile());
+        QTRY_COMPARE_WITH_TIMEOUT(session.conn(), int(Session::Connected), 10'000);
+        QVERIFY(!session.hasCapability(u"commands"_s));
+
+        // The composer still has something to offer: the commands the app
+        // can carry out through routes this daemon does have.
+        QStringList names;
+        for (const QVariant &c : session.commands())
+            names << c.toMap().value(u"name"_s).toString();
+        QCOMPARE(names, (QStringList{u"stop"_s, u"reset"_s, u"model"_s, u"effort"_s, u"pulse"_s}));
+
+        QTRY_COMPARE_WITH_TIMEOUT(session.selectedChatId(), u"d_welcome"_s, 5000);
+        const auto chat = [&] {
+            for (const QJsonValue v : mock.state()["chats"_L1].toArray()) {
+                if (v["id"_L1].toString() == "d_welcome"_L1)
+                    return v.toObject();
+            }
+            return QJsonObject();
+        };
+        session.send(u"/pulse on"_s, {}, {});
+        QTRY_VERIFY_WITH_TIMEOUT(chat()["pulse"_L1].toBool(), 5000);
+        session.send(u"/effort high"_s, {}, {});
+        QTRY_COMPARE_WITH_TIMEOUT(chat()["effort"_L1].toString(), u"high"_s, 5000);
+        session.send(u"/model"_s, {}, {});
+        QCOMPARE(picker.count(), 1);
+        // None of that was sent to the model as a message...
+        QVERIFY(mock.state()["sent"_L1].toArray().isEmpty());
+        // ...and anything that isn't one of these still is.
+        session.send(u"/etc/hosts looks odd"_s, {}, {});
+        QTRY_COMPARE_WITH_TIMEOUT(mock.state()["sent"_L1].toArray().size(), 1, 5000);
+    }
+
+    void pairLinkLabel()
+    {
+        const auto p = profileFromPairLink(
+            u"talon://pair?u=https%3A%2F%2Fmesh.example.org&t=tok&f="_s
+            + QString(64, u'a') + u"&n=Car%20phone"_s);
+        QVERIFY(p.has_value());
+        QCOMPARE(p->name, u"Car phone"_s);
+        QCOMPARE(p->host, u"mesh.example.org"_s);
+        // Without a label the connection is named for its host, as before.
+        const auto bare = profileFromPairLink(u"talon://pair?u=http%3A%2F%2F192.168.1.5%3A19880&t=tok"_s);
+        QVERIFY(bare.has_value());
+        QCOMPARE(bare->name, u"192.168.1.5"_s);
+        QVERIFY(isPairPageUrl(u"https://mesh.example.org/pair?grant=abc"_s));
+        QVERIFY(!isPairPageUrl(u"https://mesh.example.org/pair"_s));
+    }
+
     void certificateBundleFormats()
     {
         if (!haveOpenssl())

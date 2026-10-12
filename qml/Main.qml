@@ -143,6 +143,10 @@ C.ApplicationWindow {
     }
 
     Connections {
+        target: App.session
+        function onModelPickerRequested() { root.openModelPicker() }
+    }
+    Connections {
         target: App
         function onToast(text) { root.toast(text) }
         function onPairLinkReceived(link) { pairSheet.offer(link) }

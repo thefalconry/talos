@@ -27,7 +27,9 @@ daemon's protocol definition rather than ported from the Flutter companion.
   images shown inline, file attachments
 - Attach any files (picker, drag and drop, paste an image); uploads stream
   with progress
-- Slash-command completion from the daemon's own list
+- Slash commands: completion from the daemon's own list, with each
+  command's arguments. On a daemon too old to have one, the app carries out
+  `/stop`, `/reset`, `/model`, `/effort` and `/pulse` itself
 - Queue a follow-up while a turn runs, edit or cancel it from any device
 - Stop a running turn
 - Per-chat model, reasoning effort and backend
@@ -54,7 +56,9 @@ daemon's protocol definition rather than ported from the Flutter companion.
   the token. A system browser has no client certificate and could not open
   them
 - A home-network address that is preferred whenever it answers
-- `talon://pair` links (pasted, clicked, or passed on the command line)
+- Pairing by link: a `talon://pair` link (pasted, clicked, or passed on the
+  command line), or the address of the pairing page `/mesh link` gives you,
+  which the app redeems itself
 - Trades the shared bridge token for a per-device credential, and rotates it
   when Talon asks
 - Several saved connections; credentials live in the system keyring
@@ -237,6 +241,10 @@ tests/       unit and integration tests, protocol fixtures
   text-to-speech is used.
 - **Android background mesh.** The mesh runs while the app is alive. There
   is no foreground service keeping it up after the app is swiped away.
+- **Fallback endpoints.** A daemon with `native.endpoints` set tells mesh
+  devices other ways to reach it (a second name, a fixed IP for when DNS is
+  down). talon-node follows that list; Talos stays on the address it was
+  given.
 - **Android root / Shizuku and `install_apk`.** Commands run as the app's own
   user. `install_apk` is not offered and is refused if sent.
 - **`computer`** covers screenshot, move, click, drag, scroll, type and key

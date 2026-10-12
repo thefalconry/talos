@@ -20,6 +20,7 @@
 #include <QSaveFile>
 #include <QSslSocket>
 #include <QStyleHints>
+#include <QUrlQuery>
 
 namespace talos {
 
@@ -310,14 +311,8 @@ QVariantMap App::profileForm(const QString &id) const
 QVariantMap App::formFromPairLink(const QString &text) const
 {
     const QString link = findPairLink(text);
-    if (link.isEmpty()) {
-        if (isPairPageUrl(text)) {
-            return {{u"error"_s, u"That is the pairing page's own address, and its code only "
-                                 "works once. Open it in a browser and use the link the page "
-                                 "shows."_s}};
-        }
+    if (link.isEmpty())
         return {{u"error"_s, u"No pairing link found. It starts with talon://pair"_s}};
-    }
     const auto p = profileFromPairLink(link);
     if (!p) {
         return {{u"error"_s, u"That pairing link can't be used: an https bridge must name its "
@@ -326,7 +321,7 @@ QVariantMap App::formFromPairLink(const QString &text) const
     }
     QVariantMap form = newProfileForm();
     form[u"mode"_s] = u"remote"_s;
-    form[u"name"_s] = p->host;
+    form[u"name"_s] = p->name;
     form[u"address"_s] = p->baseUrl();
     form[u"tls"_s] = p->tls;
     form[u"token"_s] = p->token;
@@ -432,6 +427,74 @@ QVariantMap App::checkForm(const QVariantMap &form) const
         {u"address"_s, p.baseUrl()},
         {u"warning"_s, warning},
     };
+}
+
+bool App::isPairPage(const QString &text) const
+{
+    return isPairPageUrl(text);
+}
+
+void App::redeemPairPage(const QString &address, QJSValue done)
+{
+    const auto answer = [this, done](const QVariantMap &result) {
+        if (!m_engine || !done.isCallable())
+            return;
+        QJSValue fn = done;
+        fn.call({m_engine->toScriptValue(result)});
+    };
+    const QUrl url(address.trimmed());
+    const bool tls = url.scheme().toLower() == "https"_L1;
+    if (!isPairPageUrl(address)) {
+        answer({{u"error"_s, u"That isn't a pairing page address."_s}});
+        return;
+    }
+    // The page hands over a credential, so it is only fetched in the clear
+    // from an address that can't be on the open internet.
+    if (!tls && !isPrivateAddress(url.host())) {
+        answer({{u"error"_s, u"That pairing page is plain http on a public address, where "
+                             "anyone on the way could read the credential it hands over."_s}});
+        return;
+    }
+    // No pin yet and no credential: the page is public by design, and the
+    // payload names the certificate every later connection must present.
+    Profile target = Profile::defaults();
+    target.local = false;
+    target.manageDaemon = false;
+    target.host = url.host();
+    target.tls = tls;
+    target.port = url.port(Profile::defaultPort(tls));
+    auto *client = new BridgeClient(target, this);
+    QUrlQuery query;
+    query.addQueryItem(u"grant"_s, QUrlQuery(url).queryItemValue(u"grant"_s, QUrl::FullyDecoded));
+    query.addQueryItem(u"format"_s, u"json"_s);
+    client->get(u"/pair"_s, query, [this, client, answer](const ApiResult &r) {
+        client->deleteLater();
+        if (r.kind == ApiResult::ClientCertRequired) {
+            answer({{u"error"_s, u"This server asks for a client certificate before it shows "
+                                 "anything, the pairing page included. Add the connection by "
+                                 "hand and import the certificate there."_s}});
+            return;
+        }
+        if (r.status == 404) {
+            answer({{u"error"_s, u"That pairing link is unknown, expired or already used. Ask "
+                                 "Talon for a new one with /mesh link."_s}});
+            return;
+        }
+        if (!r.ok()) {
+            answer({{u"error"_s, u"Couldn't open the pairing page: %1"_s.arg(r.error)}});
+            return;
+        }
+        // The same link the page's own button carries, so both ways of
+        // pairing pass through one set of checks.
+        QUrlQuery q;
+        q.addQueryItem(u"u"_s, QString::fromUtf8(QUrl::toPercentEncoding(r.json["url"_L1].toString())));
+        q.addQueryItem(u"t"_s, QString::fromUtf8(QUrl::toPercentEncoding(r.json["token"_L1].toString())));
+        if (r.json.contains("fingerprint"_L1))
+            q.addQueryItem(u"f"_s, r.json["fingerprint"_L1].toString());
+        if (r.json.contains("label"_L1))
+            q.addQueryItem(u"n"_s, QString::fromUtf8(QUrl::toPercentEncoding(r.json["label"_L1].toString())));
+        answer(formFromPairLink(u"talon://pair?"_s + q.toString(QUrl::FullyEncoded)));
+    });
 }
 
 void App::probeForm(const QVariantMap &form, QJSValue done)

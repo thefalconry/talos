@@ -12,7 +12,8 @@
 //
 // Options: --port N (0 picks one) · --token T · --tls · --mtls · --dir D
 //          (where certificates go) · --discovery FILE (write a
-//          native-bridge.json there, like the daemon does) · --slow MS
+//          native-bridge.json there, like the daemon does) · --slow MS ·
+//          --no-commands (behave like a daemon that predates slash commands)
 //
 // On start it prints one JSON line: {port, scheme, fingerprint, token, ...}.
 // Test hooks (not part of the protocol): POST /__emit pushes any event to
@@ -38,6 +39,8 @@ const token = opt("token", "");
 const useTls = flag("tls") || flag("mtls");
 const useMtls = flag("mtls");
 const slow = Number(opt("slow", "35"));
+// An older daemon: no `commands` capability, no GET /commands.
+const noCommands = flag("no-commands");
 // Only TLS needs somewhere to keep certificates; make it on demand.
 const dir = opt("dir", "") || (flag("tls") || flag("mtls") ? fs.mkdtempSync(path.join(os.tmpdir(), "talon-mock-")) : "");
 const startedAt = new Date().toISOString();
@@ -58,6 +61,7 @@ const state = {
   registrations: [],
   locations: [],
   sent: [],
+  pairGrants: ["mock-grant"],
   uploads: [],
   secrets: [],
   transfers: [],
@@ -249,7 +253,8 @@ seedChat("d_old", "Reading list", 45 * day, [
 function status() {
   return {
     app: "talon-bridge", protocol: 1,
-    capabilities: ["mesh", "mesh-commands", "plugins-skills", "attachments", "commands"],
+    capabilities: ["mesh", "mesh-commands", "plugins-skills", "attachments",
+      ...(noCommands ? [] : ["commands"])],
     botName: config.botDisplayName, backend: config.backend, model: config.modelDisplay,
     activeChats: chats.size, startedAt,
   };
@@ -511,7 +516,26 @@ async function handle(req, res) {
       runTurn(body.chatId, body.text ?? "");
       return json(res, 202, { ok: true });
     }
-    case "GET /commands": return json(res, 200, { commands });
+    case "GET /pair": {
+      // Single use, like the daemon's: serving it is the handover.
+      const grant = url.searchParams.get("grant") ?? "";
+      if (!state.pairGrants.includes(grant))
+        return json(res, 404, { ok: false, error: "Unknown, expired, or already-used pairing link" });
+      state.pairGrants = state.pairGrants.filter((g) => g !== grant);
+      const payload = {
+        url: `${useTls ? "https" : "http"}://127.0.0.1:${server.address().port}`, token,
+        ...(fingerprint ? { fingerprint } : {}), label: "Mock bridge",
+      };
+      if (url.searchParams.get("format") === "json") return json(res, 200, payload);
+      const q = new URLSearchParams({ u: payload.url, t: payload.token });
+      if (payload.fingerprint) q.set("f", payload.fingerprint);
+      q.set("n", payload.label);
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      return res.end(`<!doctype html><a href="talon://pair?${q}">Open in Talon</a>`);
+    }
+    case "GET /commands":
+      return noCommands ? json(res, 404, { ok: false, error: "Not found" })
+                        : json(res, 200, { commands });
     case "POST /upload": {
       const bytes = await readBody(req);
       if (bytes.length === 0) return json(res, 400, { ok: false, error: "Upload was empty" });
@@ -736,7 +760,11 @@ async function handle(req, res) {
       }
       return json(res, 200, { ok: true, streams: streams.size });
     }
-    case "GET /__state": return json(res, 200, { ...state, streams: [...streams].map((s) => s.deviceId ?? null) });
+    case "GET /__state":
+      return json(res, 200, {
+        ...state, chats: [...chats.values()],
+        streams: [...streams].map((s) => s.deviceId ?? null),
+      });
     default:
       return json(res, 404, { ok: false, error: `No route ${route}` });
   }

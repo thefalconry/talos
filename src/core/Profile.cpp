@@ -289,7 +289,10 @@ std::optional<Profile> profileFromPairLink(const QString &link)
     } else if (!isPrivateAddress(host)) {
         return std::nullopt;
     }
-    p.name = host;
+// The daemon's own label for the connection ("Car", "Phone"), when the
+    // link carries one.
+    const QString label = q.queryItemValue(u"n"_s, QUrl::FullyDecoded).simplified().left(60);
+    p.name = label.isEmpty() ? host : label;
     return p;
 }
 

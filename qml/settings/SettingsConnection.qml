@@ -126,7 +126,7 @@ Pane {
             clickable: true
             iconName: "link"
             title: qsTr("Pair with a link")
-            subtitle: qsTr("Paste a talon://pair link from Talon's /mesh link.")
+            subtitle: qsTr("Uses the link on your clipboard: the address /mesh link gives you, or a talon://pair link.")
             onClicked: pane.win.pairSheet.offer(App.clipboardText())
         }
     }

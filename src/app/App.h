@@ -96,6 +96,12 @@ public:
     Q_INVOKABLE QVariantMap profileForm(const QString &id) const;
     /// The form a pairing link fills in, or `{error}`.
     Q_INVOKABLE QVariantMap formFromPairLink(const QString &text) const;
+    /// True for the address of a daemon's pairing page (`…/pair?grant=…`),
+    /// which redeemPairPage can trade for the connection it stands for.
+    Q_INVOKABLE bool isPairPage(const QString &text) const;
+    /// Fetch a pairing page's payload and answer like formFromPairLink.
+    /// The grant in the address is spent by the attempt.
+    Q_INVOKABLE void redeemPairPage(const QString &address, QJSValue done);
     /// Validate a form. Returns `{ok, error, needsFingerprint}`.
     Q_INVOKABLE QVariantMap checkForm(const QVariantMap &form) const;
     /// Look at the certificate the form's server presents, sending no

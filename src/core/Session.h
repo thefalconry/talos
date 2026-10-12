@@ -167,6 +167,9 @@ public:
 
     /// Append a local note to a chat (errors, refusals).
     void note(const QString &chatId, const QString &text);
+    /// Carry out one of the client's own slash commands. False when the
+    /// text isn't one, and should be sent as a message.
+    bool runBuiltInCommand(const QString &chatId, const QString &text);
 
 signals:
     void connChanged();
@@ -178,6 +181,8 @@ signals:
     void historyChanged();
     void modelsChanged();
     void commandsChanged();
+    /// A typed command asked for the model and effort picker.
+    void modelPickerRequested();
     void daemonConfigChanged();
     void devicesChanged();
     void narrowChanged();
@@ -288,6 +293,8 @@ private:
 
     QVariantList m_models;
     QVariantList m_commands;
+    /// The list is the client's own (see builtInCommands), not the daemon's.
+    bool m_commandsBuiltIn = false;
     QVariantMap m_daemonConfig;
     QVariantList m_devices;
     QVariantList m_locations;

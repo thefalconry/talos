@@ -22,11 +22,40 @@ Item {
         property var form: ({})
         property string problem
 
-        function offer(text) {
-            const result = App.formFromPairLink(text || "")
+        property bool busy: false
+
+        function show(result) {
+            busy = false
             problem = result.error || ""
             form = result.error ? ({}) : result
+        }
+
+        function offer(text) {
+            // The address of Talon's pairing page stands for the same thing
+            // as the link on it; fetch what it hands over.
+            if (App.isPairPage(text || "")) {
+                problem = ""
+                form = ({})
+                busy = true
+                open()
+                App.redeemPairPage(text, function (result) { pairSheet.show(result) })
+                return
+            }
+            show(App.formFromPairLink(text || ""))
             open()
+        }
+
+        RowLayout {
+            visible: pairSheet.busy
+            Layout.fillWidth: true
+            spacing: 10
+            Spinner { size: 18 }
+            Text {
+                text: qsTr("Opening the pairing page…")
+                color: Theme.textSecondary
+                font.pixelSize: Theme.body
+                Layout.fillWidth: true
+            }
         }
 
         Text {
@@ -39,7 +68,7 @@ Item {
             Layout.fillWidth: true
         }
         ColumnLayout {
-            visible: pairSheet.problem === ""
+            visible: pairSheet.problem === "" && !pairSheet.busy
             Layout.fillWidth: true
             spacing: 10
 
@@ -79,7 +108,7 @@ Item {
         }
         footer: [
             TButton {
-                visible: pairSheet.problem === ""
+                visible: pairSheet.problem === "" && !pairSheet.busy
                 kind: "primary"
                 text: qsTr("Pair")
                 onClicked: {

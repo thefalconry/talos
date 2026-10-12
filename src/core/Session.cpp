@@ -15,6 +15,7 @@
 #include <QMimeDatabase>
 #include <QNetworkInformation>
 #include <QProcess>
+#include <QRegularExpression>
 #include <memory>
 
 namespace talos {
@@ -600,6 +601,7 @@ void Session::resetStores()
     m_chats.clear();
     m_models.clear();
     m_commands.clear();
+    m_commandsBuiltIn = false;
     m_daemonConfig.clear();
     m_devices.clear();
     m_locations.clear();
@@ -1299,18 +1301,86 @@ void Session::refreshModels(const QString &chatId)
     });
 }
 
+namespace {
+
+/// What the composer offers on a daemon without the `commands` capability.
+/// Such a daemon hands "/reset" to the model as ordinary text; these few
+/// have routes of their own, so the client carries them out itself.
+QVariantList builtInCommands()
+{
+    const auto command = [](const QString &name, const QString &description,
+                            const QString &args = {}) {
+        QVariantMap c{{u"name"_s, name}, {u"description"_s, description}};
+        if (!args.isEmpty())
+            c[u"args"_s] = args;
+        return QVariant(c);
+    };
+    return {
+        command(u"stop"_s, u"Stop the current response"_s),
+        command(u"reset"_s, u"Clear the session and start fresh"_s),
+        command(u"model"_s, u"Pick the model, backend and effort"_s),
+        command(u"effort"_s, u"Set thinking effort"_s, u"[off|low|medium|high|max|adaptive]"_s),
+        command(u"pulse"_s, u"Periodic check-ins for this chat"_s, u"[on|off]"_s),
+    };
+}
+
+} // namespace
+
 void Session::refreshCommands()
 {
     if (!m_client)
         return;
+    m_commandsBuiltIn = !hasCapability(u"commands"_s);
+    if (m_commandsBuiltIn) {
+        m_commands = builtInCommands();
+        emit commandsChanged();
+        return;
+    }
     const int epoch = m_epoch;
     m_client->get(u"/commands"_s, {}, [this, epoch](const ApiResult &r) {
         if (epoch != m_epoch)
             return;
-        // An older daemon has no such route; the composer just offers none.
+        // Without the list there is nothing to suggest, but the daemon still
+        // answers a command that is typed out.
         m_commands = r.ok() ? r.json["commands"_L1].toArray().toVariantList() : QVariantList();
         emit commandsChanged();
     });
+}
+
+bool Session::runBuiltInCommand(const QString &chatId, const QString &text)
+{
+    static const QRegularExpression shape(u"^/([a-zA-Z]+)(?:\\s+(.*))?$"_s,
+                                          QRegularExpression::DotMatchesEverythingOption);
+    const auto m = shape.match(text);
+    if (!m.hasMatch())
+        return false;
+    const QString name = m.captured(1).toLower();
+    const QString arg = m.captured(2).trimmed().toLower();
+    // Like the daemon's own parser: a name that isn't a command ("/etc/hosts",
+    // a typo) is ordinary text for the model.
+    if (name == "stop"_L1) {
+        interrupt();
+    } else if (name == "reset"_L1) {
+        resetChat(chatId);
+    } else if (name == "model"_L1 || (name == "effort"_L1 && arg.isEmpty())) {
+        emit modelPickerRequested();
+    } else if (name == "effort"_L1) {
+        setEffort(chatId, arg);
+        note(chatId, u"Thinking effort set to %1."_s.arg(arg));
+    } else if (name == "pulse"_L1) {
+        const Chat *c = m_chats.find(chatId);
+        if (!arg.isEmpty() && arg != "on"_L1 && arg != "off"_L1) {
+            note(chatId, u"Use /pulse on or /pulse off."_s);
+            return true;
+        }
+        const bool on = arg.isEmpty() ? !(c && c->pulse) : arg == "on"_L1;
+        setPulse(chatId, on);
+        note(chatId, on ? u"Check-ins are on for this chat."_s
+                        : u"Check-ins are off for this chat."_s);
+    } else {
+        return false;
+    }
+    return true;
 }
 
 void Session::loadHistory(const QString &chatId)
@@ -1483,6 +1553,10 @@ void Session::send(const QString &text, const QVariantList &attachments, QJSValu
     if (!m_client || m_conn != Connected) {
         note(chatId, u"Not connected to Talon, so this wasn't sent."_s);
         reply(done, false);
+        return;
+    }
+    if (m_commandsBuiltIn && attachments.isEmpty() && runBuiltInCommand(chatId, body)) {
+        reply(done, true);
         return;
     }
     m_unusedChats.remove(chatId);

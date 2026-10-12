@@ -124,7 +124,8 @@ Item {
         width: parent.width
         spacing: 8
 
-        // Slash commands the daemon answers itself.
+        // Slash commands: the daemon's own, or on an older daemon the few
+        // the app can carry out itself.
         Rectangle {
             visible: composer.commandMatches.length > 0
             Layout.fillWidth: true
@@ -163,6 +164,15 @@ Item {
                                 color: Theme.text
                                 font.family: Theme.mono
                                 font.pixelSize: Theme.small + 1
+                            }
+                            Text {
+                                visible: text !== ""
+                                text: commandRow.modelData.args || ""
+                                color: Theme.textTertiary
+                                font.family: Theme.mono
+                                font.pixelSize: Theme.small
+                                elide: Text.ElideRight
+                                Layout.maximumWidth: commandList.width * 0.35
                             }
                             Text {
                                 text: commandRow.modelData.description || ""

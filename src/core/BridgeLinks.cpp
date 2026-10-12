@@ -115,8 +115,12 @@ QVariantMap BridgeLinks::inspect(const QString &link) const
     if (!findPairLink(text).isEmpty())
         return {{u"kind"_s, u"pair"_s}, {u"link"_s, findPairLink(text)}};
     const QUrl url(text);
-    if (!isBridgeUrl(url))
-        return {{u"kind"_s, u"external"_s}, {u"link"_s, text}};
+    if (!isBridgeUrl(url)) {
+        // Another daemon's pairing page is redeemed in the app. This one's
+        // own goes through the open connection below, which carries the
+        // client certificate a proxy in front of it may demand.
+        return {{u"kind"_s, isPairPageUrl(text) ? u"pair"_s : u"external"_s}, {u"link"_s, text}};
+    }
     const bool secret = url.path() == "/secret"_L1 && QUrlQuery(url).hasQueryItem(u"grant"_s);
     return {
         {u"kind"_s, secret ? u"secret"_s : u"bridge"_s},
