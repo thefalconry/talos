@@ -17,6 +17,12 @@
 #  include <QJniObject>
 #elif defined(Q_OS_WIN)
 #  include <windows.h>
+#elif defined(Q_OS_MACOS)
+#  include <CoreFoundation/CoreFoundation.h>
+#  include <IOKit/ps/IOPSKeys.h>
+#  include <IOKit/ps/IOPowerSources.h>
+#  include <SystemConfiguration/SystemConfiguration.h>
+#  include <sys/sysctl.h>
 #endif
 
 namespace talos::platform {
@@ -58,6 +64,16 @@ QString deviceName()
         ? model : (maker + u' ' + model).trimmed();
     return label.isEmpty() ? u"Android device"_s : label;
 #else
+#  if defined(Q_OS_MACOS)
+    // The name the Mac goes by in Sharing ("Ada's MacBook Air"), not its
+    // network name with ".local" on the end.
+    if (const CFStringRef given = SCDynamicStoreCopyComputerName(nullptr, nullptr)) {
+        const QString name = QString::fromCFString(given).trimmed();
+        CFRelease(given);
+        if (!name.isEmpty())
+            return name;
+    }
+#  endif
     const QString host = QSysInfo::machineHostName().trimmed();
     if (!host.isEmpty() && host != "localhost"_L1)
         return host;
@@ -101,6 +117,43 @@ Battery battery()
         if (s.ACLineStatus <= 1 && b.percent >= 0)
             b.charging = s.ACLineStatus;
     }
+#elif defined(Q_OS_MACOS)
+    const CFTypeRef blob = IOPSCopyPowerSourcesInfo();
+    const CFArrayRef sources = blob ? IOPSCopyPowerSourcesList(blob) : nullptr;
+    for (CFIndex i = 0; sources && i < CFArrayGetCount(sources); ++i) {
+        const CFDictionaryRef source =
+            IOPSGetPowerSourceDescription(blob, CFArrayGetValueAtIndex(sources, i));
+        if (!source)
+            continue;
+        // The Mac's own battery, not a UPS or a paired keyboard.
+        const auto type = static_cast<CFStringRef>(
+            CFDictionaryGetValue(source, CFSTR(kIOPSTypeKey)));
+        if (!type || !CFEqual(type, CFSTR(kIOPSInternalBatteryType)))
+            continue;
+        const auto number = [source](CFStringRef key) {
+            int value = -1;
+            const auto n = static_cast<CFNumberRef>(CFDictionaryGetValue(source, key));
+            if (n)
+                CFNumberGetValue(n, kCFNumberIntType, &value);
+            return value;
+        };
+        const int now = number(CFSTR(kIOPSCurrentCapacityKey));
+        const int full = number(CFSTR(kIOPSMaxCapacityKey));
+        if (now < 0 || full <= 0)
+            continue;
+        b.percent = qBound(0, qRound(100.0 * now / full), 100);
+        // On mains counts as charging, as "Full" does on Linux: macOS holds
+        // a battery below full for long stretches while plugged in.
+        const auto state = static_cast<CFStringRef>(
+            CFDictionaryGetValue(source, CFSTR(kIOPSPowerSourceStateKey)));
+        if (state)
+            b.charging = CFEqual(state, CFSTR(kIOPSACPowerValue)) ? 1 : 0;
+        break;
+    }
+    if (sources)
+        CFRelease(sources);
+    if (blob)
+        CFRelease(blob);
 #elif defined(Q_OS_LINUX)
     const QDir supplies(u"/sys/class/power_supply"_s);
     const auto read = [](const QString &path) {
@@ -142,6 +195,11 @@ QVariantMap systemInfo()
         .arg((qAbs(offset) % 3600) / 60, 2, 10, QLatin1Char('0'));
 #if defined(Q_OS_ANDROID)
     info[u"hardware"_s] = deviceName();
+#elif defined(Q_OS_MACOS)
+    char model[64] = {};
+    size_t size = sizeof model - 1;
+    if (sysctlbyname("hw.model", model, &size, nullptr, 0) == 0 && model[0])
+        info[u"hardware"_s] = QString::fromLatin1(model);
 #endif
     if (QNetworkInformation *net = QNetworkInformation::instance()) {
         if (net->reachability() == QNetworkInformation::Reachability::Disconnected) {

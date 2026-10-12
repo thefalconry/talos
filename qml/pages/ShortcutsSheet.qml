@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 import QtQuick
 import QtQuick.Layouts
+import Talos.Native
 
 Sheet {
     id: sheet
@@ -43,14 +44,14 @@ Sheet {
                 Text {
                     id: key
                     anchors.centerIn: parent
-                    text: parent.parent.modelData[0]
+                    text: App.keys(parent.parent.modelData[0])
                     color: Theme.text
                     font.family: Theme.mono
                     font.pixelSize: Theme.small
                 }
             }
             Text {
-                text: parent.modelData[1]
+                text: App.keys(parent.modelData[1])
                 color: Theme.textSecondary
                 font.pixelSize: Theme.body
                 wrapMode: Text.Wrap

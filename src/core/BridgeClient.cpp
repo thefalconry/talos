@@ -4,8 +4,11 @@
 #include "core/AppLog.h"
 
 #include <QBuffer>
+#include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDateTime>
+#include <QDir>
+#include <QFile>
 #include <QJsonDocument>
 #include <QLibrary>
 #include <QRegularExpression>
@@ -37,6 +40,18 @@ bool enableLegacyCiphers()
         // Whichever major version Qt is running: 3 on most systems, but a
         // Qt built against OpenSSL 4 (Homebrew's) has libcrypto.4 open.
         QLibrary crypto(u"crypto"_s, int(QSslSocket::sslLibraryVersionNumber() >> 28));
+#endif
+#if defined(Q_OS_MACOS)
+        // An OpenSSL that travels inside the app bundle would look for its
+        // providers where it was built, on another Mac. The package puts
+        // them here instead.
+        const QString modules = QDir(QCoreApplication::applicationDirPath())
+                                    .filePath(u"../PlugIns/ossl-modules"_s);
+        using SetPath = int (*)(void *, const char *);
+        const auto setPath = reinterpret_cast<SetPath>(
+            crypto.resolve("OSSL_PROVIDER_set_default_search_path"));
+        if (setPath && QDir(modules).exists())
+            setPath(nullptr, QFile::encodeName(QDir(modules).canonicalPath()).constData());
 #endif
         using Load = void *(*)(void *, const char *);
         const auto load = reinterpret_cast<Load>(crypto.resolve("OSSL_PROVIDER_load"));

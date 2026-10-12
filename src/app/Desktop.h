@@ -24,6 +24,12 @@ public:
 
     /// The app mark, drawn here so no image format plugin is needed.
     static QIcon appIcon();
+    /// The mark for the tray. On a Mac that is the menu bar, where icons are
+    /// one colour and the system tints them: the claw alone, as a mask.
+    static QIcon trayIcon();
+    /// The Mac's menu bar: the app's commands where a Mac user looks for
+    /// them. They arrive as menuRequested. Nothing on other systems.
+    void installMenuBar();
 
     bool trayAvailable() const;
     bool autostartSupported() const;
@@ -51,6 +57,9 @@ signals:
     void quitRequested();
     void openChatRequested(const QString &chatId);
     void replyRequested(const QString &chatId, const QString &text);
+    /// A command chosen from the Mac's menu bar: about, settings, palette,
+    /// find, sidebar, shortcuts, close, minimize or zoom.
+    void menuRequested(const QString &command);
 
 private slots:
     void onNotificationAction(uint id, const QString &action);
@@ -62,6 +71,7 @@ private:
 
     QSystemTrayIcon *m_tray = nullptr;
     QMenu *m_menu = nullptr;
+    QObject *m_menuBar = nullptr;
     QString m_ringFile;
     /// Notifications on screen, by the id the desktop gave them.
     QHash<uint, QString> m_notified;

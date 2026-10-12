@@ -48,7 +48,7 @@ C.ApplicationWindow {
             App.prefs.windowWidth = width
             App.prefs.windowHeight = height
         }
-        if (App.prefs.closeToTray && App.desktop.trayAvailable) {
+        if (App.prefs.closeToTray && App.desktop.trayAvailable && !App.quitting()) {
             close.accepted = false
             root.hide()
             App.session.persist()
@@ -191,6 +191,21 @@ C.ApplicationWindow {
         function onToast(text) { root.toast(text) }
         function onPairLinkReceived(link) { pairSheet.offer(link) }
         function onOpenChatRequested(chatId) { root.openChat(chatId) }
+        // The Mac's menu bar.
+        function onMenuCommand(command) {
+            if (command === "about")
+                root.openSettings("about")
+            else if (command === "settings")
+                root.openSettings()
+            else if (command === "palette")
+                commandPalette.open()
+            else if (command === "find")
+                root.searchChat()
+            else if (command === "sidebar")
+                root.toggleSidebar()
+            else if (command === "shortcuts")
+                shortcuts.open()
+        }
         function onSharedReceived(text, files) {
             // Into the chat that is open, or a new one.
             if (App.session.selectedChatId !== "") {

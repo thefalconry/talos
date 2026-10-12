@@ -38,13 +38,13 @@ Rectangle {
             IconButton {
                 visible: !page.win.narrow && !page.win.sidebarOpen
                 iconName: "sidebar"
-                tip: qsTr("Show sidebar  (Ctrl+B)")
+                tip: App.keys(qsTr("Show sidebar  (Ctrl+B)"))
                 onClicked: page.win.toggleSidebar()
             }
             IconButton {
                 visible: !page.win.narrow && !page.win.sidebarOpen
                 iconName: "plus"
-                tip: qsTr("New chat  (Ctrl+N)")
+                tip: App.keys(qsTr("New chat  (Ctrl+N)"))
                 enabled: page.win.connected
                 onClicked: page.win.newChat()
             }

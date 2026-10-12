@@ -18,6 +18,8 @@ namespace talos {
 /// login keyring. The keyring is what protects the key at rest; the
 /// fingerprint check is this app's own gate in front of it. That is a
 /// convenience unlock, weaker than Android's, and the settings say so.
+///
+/// macOS: the same arrangement with Touch ID in front of the login Keychain.
 class Biometric : public QObject
 {
     Q_OBJECT

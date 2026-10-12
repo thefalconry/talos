@@ -18,6 +18,9 @@ namespace talos {
 /// back. Where there is no such portal `available` is false, and the same
 /// thing is reached by binding a key to `talos --quick` in the desktop's
 /// own shortcut settings.
+///
+/// On macOS it is a hot key registered with the system: Control-Option-Space,
+/// refused if another app already holds it.
 class GlobalShortcut : public QObject
 {
     Q_OBJECT

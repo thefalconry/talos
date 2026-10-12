@@ -334,7 +334,7 @@ void Biometric::clear()
     SecretStore::instance().remove(kBioKey);
 }
 
-#else
+#elif !defined(Q_OS_MACOS) // the Mac's is BiometricMac.mm
 
 // ── No backend on this platform yet ─────────────────────────────────────────
 

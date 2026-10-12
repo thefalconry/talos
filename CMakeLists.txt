@@ -9,6 +9,13 @@ project(Talos
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
+if(APPLE)
+    # The Mac's own interfaces (accessibility, Touch ID, notifications) are
+    # Objective-C; those few files are Objective-C++.
+    enable_language(OBJCXX)
+    set(CMAKE_OBJCXX_STANDARD 20)
+    set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
+endif()
 
 # GitHub "owner/repo" whose releases the in-app updater watches. Empty
 # disables the check until the user sets one in Settings.
@@ -68,8 +75,13 @@ if(TARGET Qt6::DBus AND UNIX AND NOT APPLE AND NOT ANDROID)
     target_link_libraries(talos_core PUBLIC Qt6::DBus)
     target_compile_definitions(talos_core PUBLIC TALOS_HAVE_DBUS)
 endif()
-if(APPLE)
-    target_link_libraries(talos_core PRIVATE "-framework Security" "-framework CoreFoundation")
+if(APPLE AND NOT IOS)
+    target_sources(talos_core PRIVATE src/mesh/ScreenControlMac.mm)
+    set_source_files_properties(src/mesh/ScreenControlMac.mm PROPERTIES
+        COMPILE_OPTIONS "-fobjc-arc")
+    target_link_libraries(talos_core PRIVATE
+        "-framework Security" "-framework CoreFoundation" "-framework IOKit"
+        "-framework SystemConfiguration" "-framework AppKit" "-framework ApplicationServices" "-framework Carbon")
 endif()
 if(WIN32)
     target_link_libraries(talos_core PRIVATE crypt32)
@@ -112,6 +124,15 @@ qt_add_qml_module(talos
 target_include_directories(talos PRIVATE src)
 target_link_libraries(talos PRIVATE
     talos_core Qt6::Quick Qt6::QuickControls2 Qt6::Widgets)
+if(APPLE AND NOT IOS)
+    target_sources(talos PRIVATE
+        src/app/BiometricMac.mm
+        src/app/DesktopMac.h src/app/DesktopMac.mm)
+    set_source_files_properties(src/app/BiometricMac.mm src/app/DesktopMac.mm PROPERTIES
+        COMPILE_OPTIONS "-fobjc-arc")
+    target_link_libraries(talos PRIVATE
+        "-framework Carbon" "-framework LocalAuthentication" "-framework UserNotifications")
+endif()
 if(ANDROID)
     # QtAndroidPrivate::startActivity, for the system speech recogniser.
     find_package(Qt6 REQUIRED COMPONENTS CorePrivate)
@@ -160,6 +181,24 @@ endif()
 # only needs the public one, so the same package keeps working when the
 # distribution updates Qt.
 set_target_properties(talos PROPERTIES QT_QMLCACHEGEN_ARGUMENTS "--only-bytecode")
+
+if(APPLE AND NOT IOS)
+    # The oldest macOS the bundle says it runs on is the one it was built
+    # for. With no deployment target named, the compiler takes this Mac's
+    # own version, so that is what the bundle must say too.
+    if(CMAKE_OSX_DEPLOYMENT_TARGET)
+        set(TALOS_MACOS_MINIMUM "${CMAKE_OSX_DEPLOYMENT_TARGET}")
+    else()
+        execute_process(COMMAND sw_vers -productVersion
+            OUTPUT_VARIABLE TALOS_MACOS_MINIMUM OUTPUT_STRIP_TRAILING_WHITESPACE)
+        string(REGEX MATCH "^[0-9]+\\.[0-9]+" TALOS_MACOS_MINIMUM "${TALOS_MACOS_MINIMUM}")
+    endif()
+    target_sources(talos PRIVATE packaging/macos/Talos.icns)
+    set_source_files_properties(packaging/macos/Talos.icns PROPERTIES
+        MACOSX_PACKAGE_LOCATION Resources)
+    # Talos.app, as an app is named; the program inside goes by the same.
+    set_target_properties(talos PROPERTIES OUTPUT_NAME Talos)
+endif()
 
 set_target_properties(talos PROPERTIES
     WIN32_EXECUTABLE TRUE

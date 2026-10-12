@@ -59,7 +59,7 @@ C.Popup {
         }
         for (const a of actions) {
             if (q === "" || a.label.toLowerCase().includes(q) || a.keys.includes(q))
-                out.push({ kind: "action", label: a.label, icon: a.icon, hint: a.hint, detail: "", run: a.run })
+                out.push({ kind: "action", label: a.label, icon: a.icon, hint: App.keys(a.hint), detail: "", run: a.run })
         }
         const chats = App.session.chatSummaries()
         let listed = 0

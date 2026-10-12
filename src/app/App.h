@@ -15,6 +15,7 @@
 #include "mesh/MeshService.h"
 
 #include <QColor>
+#include <QElapsedTimer>
 #include <QJSValue>
 #include <QTimer>
 #include <QTranslator>
@@ -136,6 +137,9 @@ public:
     /// Leave the app running behind whatever was open before it (a phone's
     /// "back" at the top level). False where the platform has no such thing.
     Q_INVOKABLE bool moveToBackground();
+    /// @p text with the shortcuts in it written the way this system's
+    /// keyboard has them: "Ctrl+K" as it stands, or "⌘K" on a Mac.
+    Q_INVOKABLE QString keys(const QString &text) const;
     /// The languages the interface comes in, as `[{code, name}]`.
     Q_INVOKABLE QVariantList languages() const;
     /// A starting file name for a save dialog, in the documents folder.
@@ -143,6 +147,8 @@ public:
     /// A file dialog's URL as a path on this device.
     Q_INVOKABLE QString localPath(const QUrl &url) const;
     Q_INVOKABLE void quit();
+    /// True once the app is on its way out, whoever asked.
+    Q_INVOKABLE bool quitting() const { return m_quitting; }
     /// Render the window to a PNG (development and documentation).
     Q_INVOKABLE bool grab(const QString &path);
 
@@ -158,6 +164,9 @@ signals:
     void openChatRequested(const QString &chatId);
     /// The quick-ask window was called for (shortcut, or `talos --quick`).
     void quickAskRequested();
+    /// A command from the Mac's menu bar that the window carries out:
+    /// about, settings, palette, find, sidebar or shortcuts.
+    void menuCommand(const QString &command);
     /// Another app shared text or files to this one (Android).
     void sharedReceived(const QString &text, const QVariantList &files);
 
@@ -173,6 +182,7 @@ private:
     void applyLanguage();
     void takeShared();
     QTimer m_uiBeat;
+    QElapsedTimer m_attached; ///< running since the window was handed over
     QTranslator m_translator;
     /// Set while the lock is being removed, so credentials are written back
     /// unsealed although the lock still exists for a moment.

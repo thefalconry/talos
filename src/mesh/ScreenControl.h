@@ -24,6 +24,13 @@ class Store;
 /// first use raises that consent dialog; the grant is remembered until it
 /// is revoked here or in the system settings.
 ///
+/// On macOS the pointer and keyboard are CoreGraphics events and `snapshot`
+/// reads the accessibility tree, both of which the system only allows an
+/// app the person has ticked under Privacy & Security › Accessibility;
+/// screenshots need Screen Recording in the same place. The first use of
+/// each raises the system's own request, and only the person can grant or
+/// withdraw it.
+///
 /// Coordinates follow talon-node's contract: callers work in a "space"
 /// whose longest edge is at most `maxEdge` (default 1280), and a
 /// screenshot is rendered at that size, so a pixel in the picture and a
@@ -37,7 +44,8 @@ public:
     explicit ScreenControl(Store *store, QObject *parent = nullptr);
     ~ScreenControl() override;
 
-    /// True when this desktop offers remote control through its portal.
+    /// True when this desktop offers remote control: through its portal on
+    /// Linux, always on a Mac with a display.
     bool available() const;
     bool granted() const { return m_ready; }
 
@@ -54,6 +62,9 @@ public:
     /// JPEG that fits @p maxBytes, shrinking quality first, then size.
     static QByteArray fitJpeg(const QImage &image, int quality, int maxBytes, QSize *size,
                               int *usedQuality, QString *error);
+    /// The Mac virtual key code for a named key's or modifier's keysym
+    /// (Escape, F5, Shift…), or -1 for one that types a character.
+    static int macKeyCode(int keysym);
 
 signals:
     void changed();
@@ -70,6 +81,16 @@ private:
     void perform(const QJsonObject &params, DeviceExec::Done done);
     void runSteps(QList<Step> steps, std::function<void()> then);
     void screenshot(const QJsonObject &params, DeviceExec::Done done);
+    /// Scale a capture of the shared screen to the space and answer with it.
+    void replyWithShot(QImage shot, const QJsonObject &params, DeviceExec::Done done);
+    /// Whether this platform can read the accessibility tree at all.
+    static bool canSnapshot();
+    void snapshot(const QJsonObject &params, DeviceExec::Done done);
+    /// Looks at what is under @p point (stream coordinates) now, and returns
+    /// what to call once a click there has settled: it reports the control
+    /// that was hit, how it changed, and what is under the pointer since.
+    /// Null where the platform has no way to look.
+    std::function<void(QJsonObject *)> clickProbe(const QPointF &point, double factor);
     QJsonObject baseReply(const QSize &space) const;
     void notify(const QString &method, const QVariantList &args);
 
@@ -77,6 +98,7 @@ private:
     bool m_ready = false;
     bool m_starting = false;
     bool m_busy = false;
+    QString m_action; ///< the action being handled; which permission it needs differs
     QString m_session;
     uint m_stream = 0;
     QSize m_streamSize;

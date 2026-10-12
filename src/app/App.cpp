@@ -15,6 +15,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QImage>
+#include <QKeySequence>
 #include <QLocale>
 #include <QMimeData>
 #include <QPalette>
@@ -170,6 +171,24 @@ App::App(QObject *parent)
         showWindow();
         m_session.newChat();
     });
+    connect(&m_desktop, &Desktop::menuRequested, this, [this](const QString &command) {
+        // The window's own doing first; the rest is for the interface.
+        if (command == "close"_L1) {
+            if (QWindow *window = QGuiApplication::focusWindow())
+                window->close();
+        } else if (command == "minimize"_L1) {
+            if (m_window)
+                m_window->showMinimized();
+        } else if (command == "zoom"_L1) {
+            if (m_window) {
+                m_window->visibility() == QWindow::Maximized ? m_window->showNormal()
+                                                              : m_window->showMaximized();
+            }
+        } else if (!m_lock.locked() || command == "about"_L1) {
+            showWindow();
+            emit menuCommand(command);
+        }
+    });
 
     connect(&m_store, &Store::prefChanged, this, [this](const QString &key) {
         if (key == "closeToTray"_L1)
@@ -204,6 +223,20 @@ App::App(QObject *parent)
             platform::markUiActive(m_store.dataDir(), active);
             active ? m_uiBeat.start() : m_uiBeat.stop();
         }
+#if defined(Q_OS_MACOS)
+        // A click on the Dock icon arrives as the app becoming active. With
+        // the window closed to the menu bar that click means "open it".
+        // Not at sign-in, though, where the app was asked to start hidden.
+        if (active && m_window && m_attached.isValid() && m_attached.elapsed() > 2000) {
+            QTimer::singleShot(0, this, [this] {
+                const auto windows = QGuiApplication::topLevelWindows();
+                const bool anyShown = std::any_of(windows.begin(), windows.end(),
+                                                  [](QWindow *w) { return w->isVisible(); });
+                if (!anyShown && !m_quitting)
+                    showWindow();
+            });
+        }
+#endif
         if (active) {
             m_lock.setAppActive(true);
             m_session.resume();
@@ -237,6 +270,8 @@ void App::attach(QQmlEngine *engine, QQuickWindow *window)
 {
     m_engine = engine;
     m_window = window;
+    m_desktop.installMenuBar();
+    m_attached.start();
     m_session.setScriptEngine(engine);
     m_links.setScriptEngine(engine);
     m_lock.setScriptEngine(engine);
@@ -296,6 +331,17 @@ bool App::eventFilter(QObject *watched, QEvent *event)
     case QEvent::TouchBegin:
     case QEvent::Wheel:
         m_lock.touch();
+        break;
+    case QEvent::Quit:
+        // The system asked the app to quit (the Dock's Quit, signing out).
+        // That is not a click on the window's close button: the window must
+        // not answer it by hiding in the tray and keeping the app alive.
+        if (watched == qApp && !m_quitting) {
+            m_quitting = true;
+            m_session.persist();
+            if (m_lock.enabled())
+                m_media.clear();
+        }
         break;
     default:
         break;
@@ -753,6 +799,35 @@ void App::showWindow()
         m_window->showNormal();
     m_window->raise();
     m_window->requestActivate();
+}
+
+QString App::keys(const QString &text) const
+{
+#if defined(Q_OS_MACOS)
+    // "Ctrl+Shift+E" and the like, wherever they sit in a sentence. Qt
+    // already binds Ctrl to the Command key here; this makes the label
+    // agree with what the keys do.
+    static const QRegularExpression chord(
+        u"\\b(?:(?:Ctrl|Shift|Alt)\\+)+(?:[A-Za-z]+|\\S)"_s);
+    QString out;
+    qsizetype from = 0;
+    auto it = chord.globalMatch(text);
+    while (it.hasNext()) {
+        const auto match = it.next();
+        out += text.mid(from, match.capturedStart() - from);
+        // A Mac's keyboard says Return; "Enter" is the one on a number pad.
+        QString keys = match.captured();
+        keys.replace("+Enter"_L1, "+Return"_L1);
+        const QKeySequence sequence(keys, QKeySequence::PortableText);
+        out += sequence.isEmpty() ? match.captured()
+                                  : sequence.toString(QKeySequence::NativeText);
+        from = match.capturedEnd();
+    }
+    out += text.mid(from);
+    return out == "Enter"_L1 ? u"Return"_s : out;
+#else
+    return text;
+#endif
 }
 
 QVariantList App::languages() const

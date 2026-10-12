@@ -27,7 +27,7 @@ Pane {
             first: true
             visible: !App.mobile
             title: qsTr("Enter sends the message")
-            subtitle: qsTr("Shift+Enter starts a new line. With this off, Ctrl+Enter sends.")
+            subtitle: App.keys(qsTr("Shift+Enter starts a new line. With this off, Ctrl+Enter sends."))
             TSwitch {
                 checked: App.prefs.sendOnEnter
                 onToggled: App.prefs.sendOnEnter = checked
@@ -73,7 +73,8 @@ Pane {
         SettingRow {
             first: true
             enabled: App.desktop.trayAvailable
-            title: qsTr("Keep running in the tray")
+            title: App.platform === "macos" ? qsTr("Keep running in the menu bar")
+                                            : qsTr("Keep running in the tray")
             subtitle: App.desktop.trayAvailable
                       ? qsTr("Closing the window hides it; replies still notify and this device stays on the mesh.")
                       : qsTr("This desktop has no system tray.")
@@ -93,6 +94,8 @@ Pane {
                            : qsTr("Bound. The keys are shown, and can be changed, in your desktop's shortcut settings."))
                         : App.shortcut.state === "failed" ? App.shortcut.error
                         : App.shortcut.state === "binding" ? qsTr("Waiting for your desktop…")
+                        : App.platform === "macos"
+                          ? qsTr("Control-Option-Space, from anywhere, opens a small window for one question.")
                         : qsTr("A system-wide key that opens a small window for one question. Your desktop asks which keys to use.")
             TSwitch {
                 enabled: App.shortcut.available
@@ -103,7 +106,9 @@ Pane {
         SettingRow {
             enabled: App.desktop.autostartSupported
             title: qsTr("Open when I sign in")
-            subtitle: App.prefs.closeToTray ? qsTr("Starts hidden in the tray.") : ""
+            subtitle: !App.prefs.closeToTray ? ""
+                      : App.platform === "macos" ? qsTr("Starts hidden in the menu bar.")
+                                                 : qsTr("Starts hidden in the tray.")
             TSwitch {
                 checked: App.prefs.autostart
                 onToggled: App.prefs.autostart = checked

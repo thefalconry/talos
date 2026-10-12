@@ -84,9 +84,13 @@ daemon's protocol definition rather than ported from the Flutter companion.
 **On the desktop**
 
 - A small quick-ask window from anywhere: `talos --quick`, or a system-wide
-  shortcut where the desktop offers apps one (KDE Plasma, GNOME 48+)
+  shortcut where the desktop offers apps one (KDE Plasma, GNOME 48+) and on
+  macOS, where it is Control-Option-Space
 - Notifications open the chat they are about, and on desktops with inline
-  replies you can answer from the notification
+  replies (and in macOS's Notification Centre) you can answer from the
+  notification
+- On a Mac: the menu bar, ⌘ shortcuts, a menu bar icon to keep running
+  behind, and the name the Mac goes by in Sharing as the device's name
 - The interface in English, Spanish and Hindi; screen-reader names and
   keyboard access on the controls
 
@@ -112,15 +116,19 @@ daemon's protocol definition rather than ported from the Flutter companion.
 - **Android**: share text or files to Talos from other apps; an optional
   background service keeps the connection up with the app closed, starts
   at boot and announces replies
-- **Background service** (Linux): `talos --headless` keeps the device on the
-  mesh with the app closed; Settings or `talos service install` sets it up
-  as a systemd user unit
+- **Background service** (Linux, macOS): `talos --headless` keeps the device
+  on the mesh with the app closed; Settings or `talos service install` sets
+  it up as a systemd user unit, or on a Mac as a LaunchAgent that runs
+  while you are signed in
 - **`update_node`**: Talon can push a new Talos build. It is installed only
   if it matches the SHA-256 Talon names, is a Talos build (a talon-node
   binary is refused) and is not older than the running one
-- **`computer`** (Linux, experimental): screenshot, pointer and keyboard
-  through the desktop's own remote-control portal, which asks you first and
-  shows when a session runs
+- **`computer`** (Linux, macOS; experimental): screenshot, pointer and
+  keyboard. On Linux through the desktop's own remote-control portal, which
+  asks you first and shows when a session runs. On macOS with the system's
+  Accessibility and Screen Recording permissions, which only you can grant;
+  there it also reads what is on screen (`snapshot`) and reports what a
+  click hit
 
 **The app**
 
@@ -128,8 +136,8 @@ daemon's protocol definition rather than ported from the Flutter companion.
 - Notifications, tray, launch at sign-in
 - App lock: a passcode (Argon2id) that covers the window and encrypts the
   cached chats (XChaCha20-Poly1305), with fingerprint unlock on Linux
-  (fprintd) and fingerprint or face on Android (a keystore key released by
-  the system's biometric prompt)
+  (fprintd), Touch ID on macOS, and fingerprint or face on Android (a
+  keystore key released by the system's biometric prompt)
 - Read replies aloud; hands-free voice mode on Android
 - Update check against a GitHub repository's releases, with checksum
   verification
@@ -156,11 +164,34 @@ cmake --build build
 With a Qt from the Qt installer or `aqt` instead of the distribution's, add
 `-DCMAKE_PREFIX_PATH=$HOME/Qt/6.11.2/gcc_64` to the first command.
 
-### Windows and macOS
+### macOS
+
+With Xcode's command line tools and [Homebrew](https://brew.sh):
+
+```bash
+brew install qt cmake ninja
+```
+
+```bash
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+```
+
+```bash
+cmake --build build
+```
+
+```bash
+open build/Talos.app
+```
+
+From a terminal the program itself is `build/Talos.app/Contents/MacOS/Talos`
+(`--headless`, `--quick`, `service install`). A Qt from the Qt installer or
+`aqt` works the same with `-DCMAKE_PREFIX_PATH=$HOME/Qt/6.11.2/macos`.
+
+### Windows
 
 The same three commands from a Qt command prompt, or open `CMakeLists.txt`
-in Qt Creator. `windeployqt` / `macdeployqt` collect the Qt libraries for
-distribution.
+in Qt Creator. `windeployqt` collects the Qt libraries for distribution.
 
 ### Android
 
@@ -194,6 +225,19 @@ packaging/android/build-apk.sh
 builds and signs `dist/talos-<version>-arm64.apk`. It signs with the keystore
 named by `TALOS_KEYSTORE` (see the script); an APK can only be updated by
 one signed with the same key, so keep that file.
+
+```bash
+packaging/macos/build-dmg.sh
+```
+
+builds `dist/Talos-<version>-<arch>.dmg`: the app with Qt inside it, on a
+disk image that opens with the app beside the Applications folder. It runs
+on the macOS version its Qt was built for and later (Homebrew's Qt targets
+the Mac it is installed on; the Qt Company's builds reach back several
+releases). Without a signing identity the app is signed ad hoc: it runs on
+the Mac that built it, and on another Mac after being allowed under Privacy
+& Security. `TALOS_SIGN_IDENTITY` and `TALOS_NOTARY_PROFILE` (see the
+script) sign it with a Developer ID and notarise the image.
 
 ### Options
 
@@ -247,7 +291,9 @@ session against the mock bridge over plain HTTP, self-signed TLS and mutual
 TLS: credential upgrade, certificate pinning and refusal, in-app bridge
 downloads, the secret drop, and every mesh command. The integration half
 needs `node`, and `openssl` for the TLS cases; without them those cases are
-skipped.
+skipped. On macOS `openssl` is LibreSSL, which cannot write the legacy
+certificate bundle one case reads back; with Homebrew's first on `PATH`
+(`PATH=/opt/homebrew/bin:$PATH ctest …`) nothing is skipped.
 
 ## Layout
 
@@ -280,20 +326,29 @@ tests/       unit and integration tests, protocol fixtures
   that needs root or Shizuku, which Talos does not use, and `exec` likewise
   runs as the app's own user.
 - **`computer`** covers screenshot, move, click, drag, scroll, type and key
-  on Linux desktops that have the RemoteDesktop portal. `snapshot` (the
-  accessibility tree) is not implemented; talon-node only has it on macOS.
-  The pointer position reported is where Talos last put it, because Wayland
-  does not reveal the real one.
+  on Linux desktops that have the RemoteDesktop portal, and on macOS.
+  `snapshot` (the accessibility tree) is macOS only, as it is in talon-node.
+  On Linux the pointer position reported is where Talos last put it, because
+  Wayland does not reveal the real one.
 - **`update_node`** replaces a copy of Talos the user can write to (a build
   tree, a portable install). A system package is left to its package
   manager, and the capability is then not advertised.
-- **Fingerprint unlock on Linux** is a convenience: fprintd confirms the
-  finger and the key is read from the login keyring, which is what protects
-  it at rest. On Android the device itself releases the key.
+- **Fingerprint unlock on Linux and Touch ID on macOS** are a convenience:
+  fprintd or the system confirms the finger and the key is read from the
+  login keyring or Keychain, which is what protects it at rest. (A Keychain
+  item that itself demands the fingerprint needs an app signed with a
+  developer identity.) On Android the device itself releases the key.
 - **The background service** keeps credentials in an owner-only file while
   it is installed, as talon-node does, because it runs with no desktop
   session and so no unlocked keyring. Fingerprint unlock is unavailable in
-  that mode.
+  that mode. On macOS it runs while you are signed in, not from boot.
+- **The quick-ask shortcut on macOS** is fixed at Control-Option-Space and
+  is refused if another app already holds those keys.
+- **Notifications on macOS** open their chat when clicked and take a reply
+  only in a build signed with a developer identity: the Notification Centre
+  refuses any other app outright. An unsigned build still tells you, by
+  posting through the system's script runner, under that program's name
+  and without click-through or replies.
 - **Updates.** The app downloads and verifies a release, then hands it to
   the system; it does not replace itself in place. No release repository is
   configured by default.
@@ -309,10 +364,21 @@ tests/       unit and integration tests, protocol fixtures
 - **Android**: builds a signed arm64 APK. It has not been run on a device,
   so the Android-only code (notifications, battery, ringtone, speech input,
   screen privacy, biometric unlock) is compiled but untried.
-- **Windows and macOS**: on hold. Their platform code (DPAPI and Keychain
-  secret storage, battery, launch at sign-in) is written but has never been
-  through a compiler; the background service, screen control and biometric
-  unlock have no backend there yet.
+- **macOS**: built, tested (the suite above, with a Keychain round trip
+  added) and run on Apple silicon with Homebrew's Qt 6.11, and packaged as
+  a disk image. Run for real there: the launchd background service
+  (install, mesh registration, restart after a kill, removal), screen
+  control (screenshot, click, type, shortcuts, drag, scroll, snapshot),
+  the menu bar and ⌘ shortcuts, closing to the menu bar and reopening,
+  the quick-ask hot key, launch at sign-in, and notifications by the
+  fallback below. Not exercised: Touch ID (the Mac had no sensor), and
+  notifications through the Notification Centre itself, with their
+  click-through and inline reply, which need a signed build. The image is
+  signed ad hoc, not notarised.
+- **Windows**: on hold. Its platform code (DPAPI secret storage, battery,
+  launch at sign-in) is written but has never been through a compiler; the
+  background service, screen control and biometric unlock have no backend
+  there yet.
 - **Not exercised on real hardware or a live desktop**: fingerprint unlock
   (no reader was available) and `computer`'s pointer and keyboard injection
   (it needs a person to accept the desktop's consent dialog). Their pure

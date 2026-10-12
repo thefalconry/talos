@@ -1513,6 +1513,18 @@
         <source>Starts hidden in the tray.</source>
         <translation>Se inicia oculta en la bandeja.</translation>
     </message>
+    <message>
+        <source>Control-Option-Space, from anywhere, opens a small window for one question.</source>
+        <translation>Control-Opción-Espacio, desde cualquier lugar, abre una ventana pequeña para una sola pregunta.</translation>
+    </message>
+    <message>
+        <source>Keep running in the menu bar</source>
+        <translation>Seguir funcionando en la barra de menús</translation>
+    </message>
+    <message>
+        <source>Starts hidden in the menu bar.</source>
+        <translation>Se inicia oculta en la barra de menús.</translation>
+    </message>
 </context>
 <context>
     <name>SettingsLogs</name>
@@ -1893,6 +1905,26 @@
         <source>A folder Talon may use</source>
         <translation>Una carpeta que Talon puede usar</translation>
     </message>
+    <message>
+        <source>It runs whenever you are signed in to this Mac.</source>
+        <translation>Funciona siempre que tengas la sesión iniciada en este Mac.</translation>
+    </message>
+    <message>
+        <source>While it is installed, credentials are kept in a private file rather than the Keychain, so that the service can read them unattended.</source>
+        <translation>Mientras está instalado, las credenciales se guardan en un archivo privado en lugar del Llavero, para que el servicio pueda leerlas sin nadie delante.</translation>
+    </message>
+    <message>
+        <source>Screenshots, pointer, keyboard and what is on screen. macOS asks you the first time: allow Talos under Privacy &amp; Security, in Accessibility for the pointer and keyboard and in Screen Recording for screenshots.</source>
+        <translation>Capturas de pantalla, puntero, teclado y lo que hay en pantalla. macOS te pregunta la primera vez: permite Talos en Privacidad y seguridad, en Accesibilidad para el puntero y el teclado y en Grabación de pantalla para las capturas.</translation>
+    </message>
+    <message>
+        <source>Accessibility is allowed.</source>
+        <translation>Accesibilidad está permitida.</translation>
+    </message>
+    <message>
+        <source>Open Privacy settings</source>
+        <translation>Abrir los ajustes de privacidad</translation>
+    </message>
 </context>
 <context>
     <name>SettingsPage</name>
@@ -2126,6 +2158,10 @@
     <message>
         <source>Cancel</source>
         <translation>Cancelar</translation>
+    </message>
+    <message>
+        <source>The passcode still works. Touch ID is this app&apos;s own check in front of a key kept in your login Keychain.</source>
+        <translation>El código sigue funcionando. Touch ID es la comprobación propia de esta app, delante de una clave guardada en tu Llavero de inicio de sesión.</translation>
     </message>
 </context>
 <context>
@@ -2570,6 +2606,97 @@
     <message>
         <source>System</source>
         <translation>Sistema</translation>
+    </message>
+</context>
+<context>
+    <name>talos::Desktop</name>
+    <message>
+        <source>File</source>
+        <translation>Archivo</translation>
+    </message>
+    <message>
+        <source>About Talos</source>
+        <translation>Acerca de Talos</translation>
+    </message>
+    <message>
+        <source>Settings…</source>
+        <translation>Ajustes…</translation>
+    </message>
+    <message>
+        <source>Quit Talos</source>
+        <translation>Salir de Talos</translation>
+    </message>
+    <message>
+        <source>New Chat</source>
+        <translation>Nuevo chat</translation>
+    </message>
+    <message>
+        <source>Search and Commands…</source>
+        <translation>Búsqueda y comandos…</translation>
+    </message>
+    <message>
+        <source>Close Window</source>
+        <translation>Cerrar ventana</translation>
+    </message>
+    <message>
+        <source>Edit</source>
+        <translation>Edición</translation>
+    </message>
+    <message>
+        <source>Undo</source>
+        <translation>Deshacer</translation>
+    </message>
+    <message>
+        <source>Redo</source>
+        <translation>Rehacer</translation>
+    </message>
+    <message>
+        <source>Cut</source>
+        <translation>Cortar</translation>
+    </message>
+    <message>
+        <source>Copy</source>
+        <translation>Copiar</translation>
+    </message>
+    <message>
+        <source>Paste</source>
+        <translation>Pegar</translation>
+    </message>
+    <message>
+        <source>Select All</source>
+        <translation>Seleccionar todo</translation>
+    </message>
+    <message>
+        <source>Find in Chat…</source>
+        <translation>Buscar en el chat…</translation>
+    </message>
+    <message>
+        <source>View</source>
+        <translation>Visualización</translation>
+    </message>
+    <message>
+        <source>Show or Hide Sidebar</source>
+        <translation>Mostrar u ocultar la barra lateral</translation>
+    </message>
+    <message>
+        <source>Window</source>
+        <translation>Ventana</translation>
+    </message>
+    <message>
+        <source>Minimize</source>
+        <translation>Minimizar</translation>
+    </message>
+    <message>
+        <source>Zoom</source>
+        <translation>Ampliar o reducir</translation>
+    </message>
+    <message>
+        <source>Help</source>
+        <translation>Ayuda</translation>
+    </message>
+    <message>
+        <source>Keyboard Shortcuts</source>
+        <translation>Atajos de teclado</translation>
     </message>
 </context>
 </TS>

@@ -6,9 +6,9 @@
 /// Keeping this device on the mesh without the app open: a per-user
 /// background service that runs `talos --headless`.
 ///
-/// On Linux that is a systemd user unit. It is the user's own unit, in the
-/// user's own configuration, running as the user: installing it needs no
-/// administrator rights.
+/// On Linux that is a systemd user unit, on macOS a LaunchAgent. Either is
+/// the user's own, in the user's own configuration, running as the user:
+/// installing it needs no administrator rights.
 namespace talos::service {
 
 bool supported();
@@ -17,10 +17,15 @@ QString state();
 bool installed();
 /// The unit this would install, for @p exe. Exposed for tests.
 QString unitText(const QString &exe);
+/// The LaunchAgent for @p exe: with @p home it runs against that data
+/// directory, with @p log its messages are kept there. Exposed for tests.
+QString agentText(const QString &exe, const QString &home, const QString &log);
+/// The unit or agent file on this system.
 QString unitPath();
 
 /// Whether the user's services keep running after sign-out and from boot.
-/// Turning that on is left to the user: `loginctl enable-linger`.
+/// Turning that on is left to the user: `loginctl enable-linger`. Never on
+/// macOS, where a LaunchAgent lives and ends with the signed-in session.
 bool lingering();
 
 bool install(QString *error);

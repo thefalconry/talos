@@ -21,6 +21,7 @@
 #include "core/Store.h"
 #include "mesh/DeviceExec.h"
 #include "mesh/MeshService.h"
+#include "mesh/Platform.h"
 #include "mesh/ScreenControl.h"
 #include "mesh/SelfUpdate.h"
 #include "mesh/ServiceInstall.h"
@@ -692,6 +693,97 @@ private slots:
         QVERIFY(unit.contains(u"ExecStart=\"/opt/My Apps/talos 100%%\" --headless\n"_s));
         QVERIFY(unit.contains(u"Restart=always"_s));
         QVERIFY(unit.contains(u"WantedBy=default.target"_s));
+    }
+
+    void launchAgent()
+    {
+        // What the Mac's background service is installed as. A path with an
+        // ampersand or a quote must stay one argument of a valid plist.
+        const QString agent = service::agentText(u"/Applications/A&B \"x\"/Talos.app/Contents/MacOS/Talos"_s,
+                                                 {}, {});
+        QVERIFY(agent.contains(u"<string>/Applications/A&amp;B &quot;x&quot;/Talos.app/Contents/MacOS/Talos"
+                               "</string><string>--headless</string>"_s));
+        QVERIFY(agent.contains(u"<key>KeepAlive</key><true/>"_s));
+        QVERIFY(agent.contains(u"<key>RunAtLoad</key><true/>"_s));
+        QVERIFY(!agent.contains(u"TALOS_HOME"_s));
+        QVERIFY(!agent.contains(u"StandardErrorPath"_s));
+        // A scratch profile's service serves that profile and says where it logs.
+        const QString scratch = service::agentText(u"/t/Talos"_s, u"/tmp/a <b>"_s, u"/tmp/mesh.log"_s);
+        QVERIFY(scratch.contains(u"<key>TALOS_HOME</key><string>/tmp/a &lt;b&gt;</string>"_s));
+        QVERIFY(scratch.contains(u"<key>StandardErrorPath</key><string>/tmp/mesh.log</string>"_s));
+#if defined(Q_OS_MACOS)
+        // And the system's own reader agrees it is a property list.
+        QTemporaryDir dir;
+        QFile file(dir.filePath(u"agent.plist"_s));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(scratch.toUtf8());
+        file.close();
+        QCOMPARE(QProcess::execute(u"/usr/bin/plutil"_s, {u"-lint"_s, u"-s"_s, file.fileName()}), 0);
+        QVERIFY(service::unitPath().endsWith(u"/Library/LaunchAgents/dev.talos.client.mesh.plist"_s));
+        QVERIFY(service::supported());
+#endif
+    }
+
+    void macKeyCodes()
+    {
+        // Named keys and modifiers are positions on a Mac keyboard…
+        QCOMPARE(ScreenControl::macKeyCode(ScreenControl::keysymFor(u"escape"_s)), 53);
+        QCOMPARE(ScreenControl::macKeyCode(ScreenControl::keysymFor(u"return"_s)), 36);
+        QCOMPARE(ScreenControl::macKeyCode(ScreenControl::keysymFor(u"left"_s)), 123);
+        QCOMPARE(ScreenControl::macKeyCode(ScreenControl::keysymFor(u"f1"_s)), 122);
+        QCOMPARE(ScreenControl::macKeyCode(ScreenControl::keysymFor(u"f12"_s)), 111);
+        QCOMPARE(ScreenControl::macKeyCode(ScreenControl::keysymFor(u"space"_s)), 49);
+        QList<int> mods;
+        int key = 0;
+        QString error;
+        QVERIFY(ScreenControl::parseCombo(u"cmd+shift+z"_s, &mods, &key, &error));
+        QCOMPARE(ScreenControl::macKeyCode(mods.at(0)), 55); // Command
+        QCOMPARE(ScreenControl::macKeyCode(mods.at(1)), 56); // Shift
+        // …while a character is typed as itself, whatever the layout.
+        QCOMPARE(ScreenControl::macKeyCode(key), -1);
+        QCOMPARE(ScreenControl::macKeyCode(ScreenControl::keysymFor(u"€"_s)), -1);
+        QCOMPARE(ScreenControl::macKeyCode(0xffbe + 24), -1); // past F20
+    }
+
+    void thisMac()
+    {
+#if !defined(Q_OS_MACOS)
+        QSKIP("the Mac's own facts");
+#else
+        QCOMPARE(platform::name(), u"macos"_s);
+        QVERIFY(!platform::isMobile());
+        // The name from Sharing, never the network name.
+        const QString name = platform::deviceName();
+        QVERIFY(!name.isEmpty());
+        QVERIFY2(!name.endsWith(u".local"_s), qPrintable(name));
+        // A model identifier such as "Mac16,1".
+        QVERIFY(platform::systemInfo().value(u"hardware"_s).toString().contains(u','));
+        // A desktop Mac has no battery, and says so the way Linux does;
+        // a laptop reports both figures or neither.
+        const platform::Battery battery = platform::battery();
+        QVERIFY(battery.percent >= -1 && battery.percent <= 100);
+        QCOMPARE(battery.percent < 0, battery.charging < 0);
+        // The Keychain round trip, under a name nothing else uses.
+        SecretStore &secrets = SecretStore::instance();
+        const bool wasFileOnly = secrets.fileOnly();
+        secrets.setFileOnly(false);
+        const QString key = u"selftest/%1"_s.arg(QCoreApplication::applicationPid());
+        bool found = true;
+        secrets.read(key, &found);
+        QVERIFY(!found);
+        if (!secrets.write(key, "first")) {
+            secrets.setFileOnly(wasFileOnly);
+            QSKIP("no Keychain to write to in this session");
+        }
+        QCOMPARE(secrets.backendName(), u"the macOS Keychain"_s);
+        QVERIFY(secrets.write(key, QByteArray("second\0value", 12)));
+        QCOMPARE(secrets.read(key, &found), QByteArray("second\0value", 12));
+        QVERIFY(found);
+        secrets.remove(key);
+        secrets.read(key, &found);
+        QVERIFY(!found);
+        secrets.setFileOnly(wasFileOnly);
+#endif
     }
 
     void screenControlGeometryAndKeys()

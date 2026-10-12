@@ -146,13 +146,23 @@ void Session::watchNetwork()
     QNetworkInformation *net = QNetworkInformation::instance();
     if (!net)
         return;
+    // Some backends (the Mac's) only learn the state a moment after they
+    // load. Finding out what the network is, is not the network changing,
+    // and must not drop a connection that was just made.
     connect(net, &QNetworkInformation::reachabilityChanged, this,
-            [this](QNetworkInformation::Reachability r) {
-        if (r != QNetworkInformation::Reachability::Disconnected)
+            [this, last = net->reachability()](QNetworkInformation::Reachability r) mutable {
+        const bool learned = last == QNetworkInformation::Reachability::Unknown;
+        last = r;
+        if (!learned && r != QNetworkInformation::Reachability::Disconnected)
             m_networkDebounce.start();
     });
     connect(net, &QNetworkInformation::transportMediumChanged, this,
-            [this] { m_networkDebounce.start(); });
+            [this, last = net->transportMedium()](QNetworkInformation::TransportMedium m) mutable {
+        const bool learned = last == QNetworkInformation::TransportMedium::Unknown;
+        last = m;
+        if (!learned)
+            m_networkDebounce.start();
+    });
 }
 
 void Session::reply(const QJSValue &cb, const QVariant &value) const

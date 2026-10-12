@@ -108,8 +108,9 @@ C.Popup {
             visible: App.lock.biometricEnabled
             Layout.fillWidth: true
             iconName: "key"
-            text: screen.scanning ? qsTr("Waiting for %1…").arg(App.lock.biometricName.toLowerCase())
-                                  : qsTr("Use %1").arg(App.lock.biometricName.toLowerCase())
+            readonly property string sensor: App.platform === "macos" ? App.lock.biometricName
+                                                                      : App.lock.biometricName.toLowerCase()
+            text: screen.scanning ? qsTr("Waiting for %1…").arg(sensor) : qsTr("Use %1").arg(sensor)
             enabled: !screen.scanning && !App.lock.busy
             onClicked: screen.biometric()
         }

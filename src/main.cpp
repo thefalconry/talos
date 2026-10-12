@@ -62,7 +62,9 @@ bool handOver(const QString &link)
 ///   [{"wait": 800, "eval": "root.openSettings()", "shot": "settings.png"}]
 /// A step may also carry "click": [x, y] (a left click at that point of the
 /// window) or "key": "back" (the Android back key: a key event, then a close
-/// request if nothing took it). Both run before the step's "eval".
+/// request if nothing took it). Both run before the step's "eval". A step's
+/// "notify": "text" posts one real notification, which a scripted run
+/// otherwise never does.
 void runScript(const QString &file, QQmlApplicationEngine *engine, talos::App *app)
 {
     QFile f(file);
@@ -99,6 +101,12 @@ void runScript(const QString &file, QQmlApplicationEngine *engine, talos::App *a
                 QCoreApplication::sendEvent(window, &release);
                 if (!press.isAccepted() && !release.isAccepted())
                     window->close();
+            }
+            const QString notice = step["notify"_L1].toString();
+            if (!notice.isEmpty()) {
+                app->desktop()->setMuted(false);
+                app->desktop()->notify(u"Talos"_s, notice);
+                app->desktop()->setMuted(true);
             }
             const QString code = step["eval"_L1].toString();
             if (!code.isEmpty()) {
@@ -150,7 +158,9 @@ int runWithoutDisplay(int argc, char *argv[], bool serviceCommand)
     }
     if (verb == "status"_L1) {
         out << "service: " << talos::service::state() << "\n";
+#if !defined(Q_OS_MACOS)
         out << "runs after sign-out: " << (talos::service::lingering() ? "yes" : "no") << "\n";
+#endif
         return 0;
     }
     talos::Store store;
@@ -165,9 +175,13 @@ int runWithoutDisplay(int argc, char *argv[], bool serviceCommand)
             return 1;
         }
         out << "Installed and started " << talos::service::unitPath() << "\n";
+#if defined(Q_OS_MACOS)
+        out << "It runs whenever you are signed in to this Mac.\n";
+#else
         if (!talos::service::lingering())
             out << "It stops when you sign out. To keep it running across sign-outs and "
                    "reboots: loginctl enable-linger\n";
+#endif
         return 0;
     }
     if (verb == "uninstall"_L1) {

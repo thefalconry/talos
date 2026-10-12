@@ -3,6 +3,10 @@
 
 #include "core/AppLog.h"
 
+#if defined(Q_OS_MACOS)
+#  include <QGuiApplication>
+#  include <Carbon/Carbon.h>
+#endif
 #if defined(TALOS_HAVE_DBUS)
 #  include <QDBusArgument>
 #  include <QDBusConnection>
@@ -177,6 +181,69 @@ void GlobalShortcut::release()
         QDBusConnection::sessionBus().asyncCall(QDBusMessage::createMethodCall(
             kPortal, m_session, u"org.freedesktop.portal.Session"_s, u"Close"_s));
         m_session.clear();
+    }
+    m_trigger.clear();
+    set(u"off"_s);
+}
+
+#elif defined(Q_OS_MACOS)
+
+// ── macOS: a hot key registered with the system ─────────────────────────────
+//
+// There is no portal to ask and no dialog to choose keys in: an app claims a
+// combination, and the claim fails if another app already holds it. The
+// keys are the ones the Linux side proposes, Control-Option-Space.
+
+namespace {
+
+EventHotKeyRef g_hotKey = nullptr;
+EventHandlerRef g_handler = nullptr;
+
+OSStatus onHotKey(EventHandlerCallRef, EventRef, void *self)
+{
+    emit static_cast<GlobalShortcut *>(self)->activated();
+    return noErr;
+}
+
+} // namespace
+
+GlobalShortcut::GlobalShortcut(QObject *parent) : QObject(parent)
+{
+    // Hot keys arrive through the app's own event loop; the background
+    // service has none.
+    m_available = qobject_cast<QGuiApplication *>(QCoreApplication::instance()) != nullptr;
+}
+
+QString GlobalShortcut::requestPath(const QString &) const { return {}; }
+
+void GlobalShortcut::bind()
+{
+    if (!m_available || m_state == "bound"_L1)
+        return;
+    if (!g_handler) {
+        const EventTypeSpec pressed{kEventClassKeyboard, kEventHotKeyPressed};
+        InstallApplicationEventHandler(&onHotKey, 1, &pressed, this, &g_handler);
+    }
+    const EventHotKeyID id{FourCharCode('TALO'), 1};
+    const OSStatus rc = RegisterEventHotKey(kVK_Space, controlKey | optionKey, id,
+                                            GetApplicationEventTarget(), 0, &g_hotKey);
+    if (rc != noErr) {
+        g_hotKey = nullptr;
+        set(u"failed"_s, rc == eventHotKeyExistsErr
+                ? u"Another app already uses Control-Option-Space."_s
+                : u"macOS refused the shortcut (error %1)."_s.arg(rc));
+        return;
+    }
+    m_trigger = u"⌃⌥Space"_s;
+    AppLog::info("shortcut", u"quick-ask shortcut bound to Control-Option-Space"_s);
+    set(u"bound"_s);
+}
+
+void GlobalShortcut::release()
+{
+    if (g_hotKey) {
+        UnregisterEventHotKey(g_hotKey);
+        g_hotKey = nullptr;
     }
     m_trigger.clear();
     set(u"off"_s);

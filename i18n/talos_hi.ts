@@ -1513,6 +1513,18 @@
         <source>Starts hidden in the tray.</source>
         <translation>ट्रे में छिपकर शुरू होता है।</translation>
     </message>
+    <message>
+        <source>Control-Option-Space, from anywhere, opens a small window for one question.</source>
+        <translation>Control-Option-Space, कहीं से भी, एक सवाल के लिए छोटी विंडो खोलता है।</translation>
+    </message>
+    <message>
+        <source>Keep running in the menu bar</source>
+        <translation>मेन्यू बार में चलता रहे</translation>
+    </message>
+    <message>
+        <source>Starts hidden in the menu bar.</source>
+        <translation>मेन्यू बार में छिपकर शुरू होता है।</translation>
+    </message>
 </context>
 <context>
     <name>SettingsLogs</name>
@@ -1893,6 +1905,26 @@
         <source>A folder Talon may use</source>
         <translation>एक फ़ोल्डर जिसे Talon इस्तेमाल कर सकता है</translation>
     </message>
+    <message>
+        <source>It runs whenever you are signed in to this Mac.</source>
+        <translation>जब भी आप इस Mac में साइन इन हों, यह चलती है।</translation>
+    </message>
+    <message>
+        <source>While it is installed, credentials are kept in a private file rather than the Keychain, so that the service can read them unattended.</source>
+        <translation>जब तक यह इंस्टॉल है, क्रेडेंशियल कीचेन की जगह एक निजी फ़ाइल में रखे जाते हैं, ताकि सेवा उन्हें बिना किसी की मौजूदगी के पढ़ सके।</translation>
+    </message>
+    <message>
+        <source>Screenshots, pointer, keyboard and what is on screen. macOS asks you the first time: allow Talos under Privacy &amp; Security, in Accessibility for the pointer and keyboard and in Screen Recording for screenshots.</source>
+        <translation>स्क्रीनशॉट, पॉइंटर, कीबोर्ड और स्क्रीन पर जो है। macOS पहली बार आपसे पूछता है: गोपनीयता और सुरक्षा में Talos को अनुमति दें, पॉइंटर और कीबोर्ड के लिए ऐक्सेसिबिलिटी में और स्क्रीनशॉट के लिए स्क्रीन रिकॉर्डिंग में।</translation>
+    </message>
+    <message>
+        <source>Accessibility is allowed.</source>
+        <translation>ऐक्सेसिबिलिटी की अनुमति है।</translation>
+    </message>
+    <message>
+        <source>Open Privacy settings</source>
+        <translation>गोपनीयता सेटिंग्स खोलें</translation>
+    </message>
 </context>
 <context>
     <name>SettingsPage</name>
@@ -2126,6 +2158,10 @@
     <message>
         <source>Cancel</source>
         <translation>रद्द करें</translation>
+    </message>
+    <message>
+        <source>The passcode still works. Touch ID is this app&apos;s own check in front of a key kept in your login Keychain.</source>
+        <translation>पासकोड अब भी काम करता है। Touch ID इस ऐप की अपनी जाँच है, उस कुंजी के आगे जो आपके लॉगिन कीचेन में रखी है।</translation>
     </message>
 </context>
 <context>
@@ -2570,6 +2606,97 @@
     <message>
         <source>System</source>
         <translation>सिस्टम</translation>
+    </message>
+</context>
+<context>
+    <name>talos::Desktop</name>
+    <message>
+        <source>File</source>
+        <translation>फ़ाइल</translation>
+    </message>
+    <message>
+        <source>About Talos</source>
+        <translation>Talos के बारे में</translation>
+    </message>
+    <message>
+        <source>Settings…</source>
+        <translation>सेटिंग्स…</translation>
+    </message>
+    <message>
+        <source>Quit Talos</source>
+        <translation>Talos से बाहर निकलें</translation>
+    </message>
+    <message>
+        <source>New Chat</source>
+        <translation>नई चैट</translation>
+    </message>
+    <message>
+        <source>Search and Commands…</source>
+        <translation>खोज और कमांड…</translation>
+    </message>
+    <message>
+        <source>Close Window</source>
+        <translation>विंडो बंद करें</translation>
+    </message>
+    <message>
+        <source>Edit</source>
+        <translation>संपादन</translation>
+    </message>
+    <message>
+        <source>Undo</source>
+        <translation>पूर्ववत करें</translation>
+    </message>
+    <message>
+        <source>Redo</source>
+        <translation>फिर से करें</translation>
+    </message>
+    <message>
+        <source>Cut</source>
+        <translation>काटें</translation>
+    </message>
+    <message>
+        <source>Copy</source>
+        <translation>कॉपी करें</translation>
+    </message>
+    <message>
+        <source>Paste</source>
+        <translation>पेस्ट करें</translation>
+    </message>
+    <message>
+        <source>Select All</source>
+        <translation>सभी चुनें</translation>
+    </message>
+    <message>
+        <source>Find in Chat…</source>
+        <translation>चैट में खोजें…</translation>
+    </message>
+    <message>
+        <source>View</source>
+        <translation>दृश्य</translation>
+    </message>
+    <message>
+        <source>Show or Hide Sidebar</source>
+        <translation>साइडबार दिखाएँ या छिपाएँ</translation>
+    </message>
+    <message>
+        <source>Window</source>
+        <translation>विंडो</translation>
+    </message>
+    <message>
+        <source>Minimize</source>
+        <translation>छोटा करें</translation>
+    </message>
+    <message>
+        <source>Zoom</source>
+        <translation>ज़ूम</translation>
+    </message>
+    <message>
+        <source>Help</source>
+        <translation>सहायता</translation>
+    </message>
+    <message>
+        <source>Keyboard Shortcuts</source>
+        <translation>कीबोर्ड शॉर्टकट</translation>
     </message>
 </context>
 </TS>

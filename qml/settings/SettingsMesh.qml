@@ -127,15 +127,21 @@ Pane {
             visible: App.prefs.meshSharing && pane.mesh.deviceControl
                      && pane.mesh.screenControlAvailable
             title: qsTr("Let Talon see and operate the screen")
-            subtitle: qsTr("Screenshots, pointer and keyboard, through the desktop's own remote-control permission. The desktop asks you the first time and shows when a session is running.")
-                      + (App.screen.granted ? "\n" + qsTr("A session is active.") : "")
+            subtitle: App.platform === "macos"
+                      ? qsTr("Screenshots, pointer, keyboard and what is on screen. macOS asks you the first time: allow Talos under Privacy & Security, in Accessibility for the pointer and keyboard and in Screen Recording for screenshots.")
+                        + (App.screen.granted ? "\n" + qsTr("Accessibility is allowed.") : "")
+                      : qsTr("Screenshots, pointer and keyboard, through the desktop's own remote-control permission. The desktop asks you the first time and shows when a session is running.")
+                        + (App.screen.granted ? "\n" + qsTr("A session is active.") : "")
             TButton {
                 visible: App.prefs.meshScreenControl
                 compact: true
-                text: qsTr("Revoke")
+                // Only the person can take back what macOS granted: this
+                // opens the list where Talos is ticked.
+                text: App.platform === "macos" ? qsTr("Open Privacy settings") : qsTr("Revoke")
                 onClicked: {
                     App.screen.revoke()
-                    App.prefs.meshScreenControl = false
+                    if (App.platform !== "macos")
+                        App.prefs.meshScreenControl = false
                 }
             }
             TSwitch {
@@ -208,8 +214,11 @@ Pane {
             title: qsTr("Stay on the mesh without the app open")
             subtitle: (App.prefs.meshService
                        ? qsTr("Service: %1.").arg(App.serviceState)
-                         + (App.serviceLingering ? "" : " " + qsTr("It stops when you sign out; run `loginctl enable-linger` to keep it up across sign-outs and reboots."))
-                         + " " + qsTr("While it is installed, credentials are kept in a private file rather than the keyring, because the service runs without your desktop session.")
+                         + (App.platform === "macos"
+                            ? " " + qsTr("It runs whenever you are signed in to this Mac.")
+                              + " " + qsTr("While it is installed, credentials are kept in a private file rather than the Keychain, so that the service can read them unattended.")
+                            : (App.serviceLingering ? "" : " " + qsTr("It stops when you sign out; run `loginctl enable-linger` to keep it up across sign-outs and reboots."))
+                              + " " + qsTr("While it is installed, credentials are kept in a private file rather than the keyring, because the service runs without your desktop session."))
                        : qsTr("Installs a background service. Screen control and the ring sound still need the app."))
                       + (problem !== "" ? "\n" + problem : "")
             TSwitch {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 import QtQuick
 import QtQuick.Controls.Basic as C
+import Talos.Native
 
 C.MenuItem {
     id: control
@@ -44,7 +45,7 @@ C.MenuItem {
         Text {
             id: hintLabel
             visible: control.hint !== ""
-            text: control.hint
+            text: App.keys(control.hint)
             font.pixelSize: Theme.small
             color: Theme.textTertiary
             anchors.verticalCenter: parent.verticalCenter

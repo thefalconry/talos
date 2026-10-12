@@ -150,6 +150,23 @@ bool ScreenControl::parseCombo(const QString &combo, QList<int> *modifiers, int 
     return true;
 }
 
+int ScreenControl::macKeyCode(int keysym)
+{
+    // Carbon's kVK_* codes: positions on the keyboard, not characters.
+    static const QHash<int, int> codes{
+        {0xff1b, 53}, {kKeyReturn, 36}, {kKeyTab, 48}, {0xff08, 51}, {0xffff, 117},
+        {0xff63, 114}, {0x20, 49}, {0xff52, 126}, {0xff54, 125}, {0xff51, 123},
+        {0xff53, 124}, {0xff50, 115}, {0xff57, 119}, {0xff55, 116}, {0xff56, 121},
+        {0xffe5, 57}, {0xff61, 105}, {0xff67, 110},
+        {0xffe1, 56}, {0xffe3, 59}, {0xffe9, 58}, {0xffeb, 55},
+    };
+    static const int function[] = {122, 120, 99, 118, 96, 97, 98, 100, 101, 109,
+                                   103, 111, 105, 107, 113, 106, 64, 79, 80, 90};
+    if (keysym >= 0xffbe && keysym < 0xffbe + int(std::size(function)))
+        return function[keysym - 0xffbe];
+    return codes.value(keysym, -1);
+}
+
 QByteArray ScreenControl::fitJpeg(const QImage &image, int quality, int maxBytes, QSize *size,
                                   int *usedQuality, QString *error)
 {
@@ -237,13 +254,13 @@ void ScreenControl::handle(const QJsonObject &params, DeviceExec::Done done)
                                       .arg(action, actions.join(u", "_s))));
         return;
     }
-    if (action == "snapshot"_L1) {
+    if (action == "snapshot"_L1 && !canSnapshot()) {
         done(CommandOutcome::fail(u"computer snapshot: reading the accessibility tree is not "
                                   "available on this device. Use screenshot instead."_s));
         return;
     }
     if (!available()) {
-        done(CommandOutcome::fail(u"computer: this desktop offers no remote-control portal."_s));
+        done(CommandOutcome::fail(u"computer: this desktop offers no way to control it."_s));
         return;
     }
     // One action at a time: two interleaved drags would be nonsense.
@@ -252,6 +269,7 @@ void ScreenControl::handle(const QJsonObject &params, DeviceExec::Done done)
         return;
     }
     m_busy = true;
+    m_action = action;
     const DeviceExec::Done finish = [this, done](const CommandOutcome &o) {
         m_busy = false;
         done(o);
@@ -270,6 +288,10 @@ void ScreenControl::perform(const QJsonObject &params, DeviceExec::Done done)
     const QString action = params["action"_L1].toString();
     if (action == "screenshot"_L1) {
         screenshot(params, done);
+        return;
+    }
+    if (action == "snapshot"_L1) {
+        snapshot(params, done);
         return;
     }
     double f = 1;
@@ -316,6 +338,10 @@ void ScreenControl::perform(const QJsonObject &params, DeviceExec::Done done)
 
     QList<Step> steps;
     QJsonObject extra;
+    // Set by a click that is to be checked: what it hit, read once the
+    // interface has had a moment to react.
+    std::function<void(QJsonObject *)> verify;
+    int settleMs = 0;
     if (action == "move"_L1) {
         QPointF p;
         if (!point("x"_L1, "y"_L1, &p))
@@ -338,6 +364,10 @@ void ScreenControl::perform(const QJsonObject &params, DeviceExec::Done done)
             mods << sym;
         }
         const int count = qBound(1, params["count"_L1].toInt(1), 3);
+        if (params["verify"_L1].toBool(true)) {
+            verify = clickProbe(p, f);
+            settleMs = qBound(0, params["settleMs"_L1].toInt(400), 3000);
+        }
         steps << moveTo(p);
         for (const int sym : mods)
             steps << key(sym, true, 10);
@@ -406,16 +436,54 @@ void ScreenControl::perform(const QJsonObject &params, DeviceExec::Done done)
             steps << key(*it, false, 10);
     }
 
-    runSteps(steps, [this, done, space, extra, session] {
+    runSteps(steps, [this, done, space, extra, session, verify, settleMs] {
         if (session != m_session || !m_ready) {
             done(CommandOutcome::fail(u"computer: the session was ended on the device."_s));
             return;
         }
-        QJsonObject data = baseReply(space);
-        for (auto it = extra.begin(); it != extra.end(); ++it)
-            data[it.key()] = it.value();
-        done(CommandOutcome::done(data));
+        const auto answer = [this, done, space, extra, verify] {
+            QJsonObject data = baseReply(space);
+            for (auto it = extra.begin(); it != extra.end(); ++it)
+                data[it.key()] = it.value();
+            if (verify)
+                verify(&data);
+            done(CommandOutcome::done(data));
+        };
+        if (verify)
+            QTimer::singleShot(settleMs, this, answer);
+        else
+            answer();
     });
+}
+
+void ScreenControl::replyWithShot(QImage shot, const QJsonObject &params, DeviceExec::Done done)
+{
+    double f = 1;
+    const QSize space = spaceFor(m_streamSize, params["maxEdge"_L1].toInt(1280), &f);
+    shot = shot.scaled(space, Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
+               .convertToFormat(QImage::Format_RGB888);
+
+    const int maxBytes = qBound(kMinImageBytes, params["maxBytes"_L1].toInt(kMaxImageBytes),
+                                kMaxImageBytes);
+    QSize size;
+    int quality = 0;
+    QString error;
+    const QByteArray jpeg =
+        fitJpeg(shot, params["quality"_L1].toInt(70), maxBytes, &size, &quality, &error);
+    if (jpeg.isEmpty()) {
+        done(CommandOutcome::fail(u"computer screenshot: %1"_s.arg(error)));
+        return;
+    }
+    QJsonObject data = baseReply(space);
+    data["base64"_L1] = QString::fromLatin1(jpeg.toBase64());
+    data["mimeType"_L1] = u"image/jpeg"_s;
+    data["width"_L1] = size.width();
+    data["height"_L1] = size.height();
+    // Multiply a position in the picture by this to get the space.
+    data["scale"_L1] = qRound(1000.0 * space.width() / size.width()) / 1000.0;
+    data["quality"_L1] = quality;
+    data["bytes"_L1] = jpeg.size();
+    done(CommandOutcome::done(data));
 }
 
 void ScreenControl::onSessionClosed()
@@ -683,33 +751,15 @@ void ScreenControl::screenshot(const QJsonObject &params, DeviceExec::Done done)
             if (shot.rect().contains(cut))
                 shot = shot.copy(cut);
         }
-        double f = 1;
-        const QSize space = spaceFor(m_streamSize, params["maxEdge"_L1].toInt(1280), &f);
-        shot = shot.scaled(space, Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
-                   .convertToFormat(QImage::Format_RGB888);
-
-        const int maxBytes = qBound(kMinImageBytes, params["maxBytes"_L1].toInt(kMaxImageBytes),
-                                    kMaxImageBytes);
-        QSize size;
-        int quality = 0;
-        QString error;
-        const QByteArray jpeg =
-            fitJpeg(shot, params["quality"_L1].toInt(70), maxBytes, &size, &quality, &error);
-        if (jpeg.isEmpty()) {
-            done(CommandOutcome::fail(u"computer screenshot: %1"_s.arg(error)));
-            return;
-        }
-        QJsonObject data = baseReply(space);
-        data["base64"_L1] = QString::fromLatin1(jpeg.toBase64());
-        data["mimeType"_L1] = u"image/jpeg"_s;
-        data["width"_L1] = size.width();
-        data["height"_L1] = size.height();
-        // Multiply a position in the picture by this to get the space.
-        data["scale"_L1] = qRound(1000.0 * space.width() / size.width()) / 1000.0;
-        data["quality"_L1] = quality;
-        data["bytes"_L1] = jpeg.size();
-        done(CommandOutcome::done(data));
+        replyWithShot(shot, params, done);
     }, this);
+}
+
+bool ScreenControl::canSnapshot() { return false; }
+void ScreenControl::snapshot(const QJsonObject &, DeviceExec::Done) {}
+std::function<void(QJsonObject *)> ScreenControl::clickProbe(const QPointF &, double)
+{
+    return {};
 }
 
 void ScreenControl::revoke()
@@ -726,7 +776,7 @@ void ScreenControl::revoke()
     emit changed();
 }
 
-#else // no D-Bus: no portal
+#elif !defined(Q_OS_MACOS) // no D-Bus: no portal. The Mac's is ScreenControlMac.mm.
 
 ScreenControl::~ScreenControl() = default;
 bool ScreenControl::available() const { return false; }
@@ -740,6 +790,12 @@ void ScreenControl::screenshot(const QJsonObject &, DeviceExec::Done done)
     done(CommandOutcome::fail(u"computer screenshot: not available on this platform."_s));
 }
 void ScreenControl::revoke() {}
+bool ScreenControl::canSnapshot() { return false; }
+void ScreenControl::snapshot(const QJsonObject &, DeviceExec::Done) {}
+std::function<void(QJsonObject *)> ScreenControl::clickProbe(const QPointF &, double)
+{
+    return {};
+}
 
 #endif
 

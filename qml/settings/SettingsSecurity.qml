@@ -34,12 +34,16 @@ Pane {
             property string problem
             visible: App.lock.enabled
             enabled: App.lock.biometricAvailable || App.lock.biometricEnabled
-            title: qsTr("Unlock with %1").arg(App.lock.biometricName.toLowerCase())
+            // "Touch ID" is a name and keeps its capitals.
+            title: qsTr("Unlock with %1").arg(App.platform === "macos" ? App.lock.biometricName
+                                                                        : App.lock.biometricName.toLowerCase())
             subtitle: problem !== "" ? problem
                     : !App.lock.biometricAvailable && !App.lock.biometricEnabled
                       ? App.lock.biometricUnavailableReason
                     : App.platform === "android"
                       ? qsTr("The passcode still works. The key is held by the device and released only to an enrolled biometric.")
+                    : App.platform === "macos"
+                      ? qsTr("The passcode still works. Touch ID is this app's own check in front of a key kept in your login Keychain.")
                       : qsTr("The passcode still works. The fingerprint is this app's own check in front of a key kept in your login keyring.")
             TSwitch {
                 checked: App.lock.biometricEnabled
@@ -48,7 +52,7 @@ Pane {
                     if (!checked) {
                         App.lock.disableBiometric()
                     } else {
-                        if (App.platform !== "android")
+                        if (App.platform === "linux")
                             pane.win.toast(qsTr("Touch the fingerprint reader"))
                         App.lock.enableBiometric(function (r) {
                             if (!r.ok)

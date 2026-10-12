@@ -47,13 +47,13 @@ Rectangle {
             }
             IconButton {
                 iconName: "search"
-                tip: qsTr("Search and commands  (Ctrl+K)")
+                tip: App.keys(qsTr("Search and commands  (Ctrl+K)"))
                 onClicked: root.win.openPalette()
             }
             IconButton {
                 visible: !root.fullScreen
                 iconName: "sidebar"
-                tip: qsTr("Hide sidebar  (Ctrl+B)")
+                tip: App.keys(qsTr("Hide sidebar  (Ctrl+B)"))
                 onClicked: root.win.toggleSidebar()
             }
         }
@@ -341,7 +341,7 @@ Rectangle {
             }
             IconButton {
                 iconName: "settings"
-                tip: qsTr("Settings  (Ctrl+,)")
+                tip: App.keys(qsTr("Settings  (Ctrl+,)"))
                 onClicked: root.win.openSettings()
 
                 Rectangle {

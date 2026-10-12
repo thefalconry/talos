@@ -29,16 +29,30 @@
 #if defined(TALOS_HAVE_MULTIMEDIA)
 #  include <QSoundEffect>
 #endif
+#if defined(Q_OS_MACOS)
+#  include "app/DesktopMac.h"
+#  include <QKeyEvent>
+#  include <QMenuBar>
+#  include <QWindow>
+#endif
 
 namespace talos {
 
 using namespace Qt::StringLiterals;
 
-Desktop::Desktop(QObject *parent) : QObject(parent) {}
+Desktop::Desktop(QObject *parent) : QObject(parent)
+{
+#if defined(Q_OS_MACOS)
+    // Before the app finishes starting, so a click on a notification that
+    // started it is not lost.
+    mac::setupNotifications(this);
+#endif
+}
 
 Desktop::~Desktop()
 {
     delete m_menu;
+    delete m_menuBar;
     if (!m_ringFile.isEmpty())
         QFile::remove(m_ringFile);
 }
@@ -73,6 +87,113 @@ QIcon Desktop::appIcon()
     return icon;
 }
 
+QIcon Desktop::trayIcon()
+{
+#if defined(Q_OS_MACOS)
+    QIcon icon;
+    for (const int size : {18, 36, 54}) {
+        QPixmap pm(size, size);
+        pm.fill(Qt::transparent);
+        QPainter p(&pm);
+        p.setRenderHint(QPainter::Antialiasing);
+        // The claw of appIcon() without its tile, filling the square.
+        p.scale(size / 36.0, size / 36.0);
+        p.translate(-14, -15);
+        QPainterPath talon;
+        talon.moveTo(17, 20);
+        talon.cubicTo(30, 16, 44, 22, 47, 36);
+        talon.cubicTo(48, 42, 45, 47, 40, 49);
+        talon.cubicTo(43, 42, 40, 35, 33, 32);
+        talon.cubicTo(36, 38, 33, 44, 27, 46);
+        talon.cubicTo(30, 39, 26, 33, 19, 31);
+        talon.cubicTo(22, 28, 22, 24, 17, 20);
+        talon.closeSubpath();
+        p.setPen(Qt::NoPen);
+        p.setBrush(Qt::black);
+        p.drawPath(talon);
+        p.end();
+        pm.setDevicePixelRatio(size / 18.0);
+        icon.addPixmap(pm);
+    }
+    icon.setIsMask(true);
+    return icon;
+#else
+    return appIcon();
+#endif
+}
+
+void Desktop::installMenuBar()
+{
+#if defined(Q_OS_MACOS)
+    if (m_menuBar)
+        return;
+    // Parentless: the one menu bar every window of the app shares.
+    auto *bar = new QMenuBar(nullptr);
+    m_menuBar = bar;
+    const auto command = [this](QMenu *menu, const QString &title, const QString &name,
+                                const QKeySequence &keys = {}) {
+        QAction *action = menu->addAction(title);
+        action->setShortcut(keys);
+        connect(action, &QAction::triggered, this, [this, name] { emit menuRequested(name); });
+        return action;
+    };
+    // What a text field would do with the keys, for someone who uses the
+    // menu instead: the field in focus gets the key press itself.
+    const auto editing = [](QMenu *menu, const QString &title, QKeySequence::StandardKey keys) {
+        QAction *action = menu->addAction(title);
+        action->setShortcut(keys);
+        connect(action, &QAction::triggered, action, [keys] {
+            QWindow *window = QGuiApplication::focusWindow();
+            const QKeySequence sequence(keys);
+            if (!window || sequence.isEmpty())
+                return;
+            const QKeyCombination combo = sequence[0];
+            QKeyEvent press(QEvent::KeyPress, combo.key(), combo.keyboardModifiers());
+            QCoreApplication::sendEvent(window, &press);
+            QKeyEvent release(QEvent::KeyRelease, combo.key(), combo.keyboardModifiers());
+            QCoreApplication::sendEvent(window, &release);
+        });
+    };
+
+    QMenu *file = bar->addMenu(tr("File"));
+    // Qt moves these three to the application menu, where a Mac keeps them.
+    command(file, tr("About Talos"), u"about"_s)->setMenuRole(QAction::AboutRole);
+    command(file, tr("Settings…"), u"settings"_s, QKeySequence::Preferences)
+        ->setMenuRole(QAction::PreferencesRole);
+    QAction *quit = file->addAction(tr("Quit Talos"));
+    quit->setMenuRole(QAction::QuitRole);
+    quit->setShortcut(QKeySequence::Quit);
+    connect(quit, &QAction::triggered, this, &Desktop::quitRequested);
+    QAction *fresh = file->addAction(tr("New Chat"));
+    fresh->setShortcut(QKeySequence::New);
+    connect(fresh, &QAction::triggered, this, &Desktop::newChatRequested);
+    command(file, tr("Search and Commands…"), u"palette"_s, QKeySequence(Qt::CTRL | Qt::Key_K));
+    file->addSeparator();
+    command(file, tr("Close Window"), u"close"_s, QKeySequence::Close);
+
+    QMenu *edit = bar->addMenu(tr("Edit"));
+    editing(edit, tr("Undo"), QKeySequence::Undo);
+    editing(edit, tr("Redo"), QKeySequence::Redo);
+    edit->addSeparator();
+    editing(edit, tr("Cut"), QKeySequence::Cut);
+    editing(edit, tr("Copy"), QKeySequence::Copy);
+    editing(edit, tr("Paste"), QKeySequence::Paste);
+    editing(edit, tr("Select All"), QKeySequence::SelectAll);
+    edit->addSeparator();
+    command(edit, tr("Find in Chat…"), u"find"_s, QKeySequence::Find);
+
+    QMenu *view = bar->addMenu(tr("View"));
+    command(view, tr("Show or Hide Sidebar"), u"sidebar"_s, QKeySequence(Qt::CTRL | Qt::Key_B));
+
+    QMenu *window = bar->addMenu(tr("Window"));
+    command(window, tr("Minimize"), u"minimize"_s, QKeySequence(Qt::CTRL | Qt::Key_M));
+    command(window, tr("Zoom"), u"zoom"_s);
+
+    QMenu *help = bar->addMenu(tr("Help"));
+    command(help, tr("Keyboard Shortcuts"), u"shortcuts"_s, QKeySequence(Qt::CTRL | Qt::Key_Slash));
+#endif
+}
+
 bool Desktop::trayAvailable() const
 {
     return !platform::isMobile() && QSystemTrayIcon::isSystemTrayAvailable();
@@ -88,7 +209,7 @@ void Desktop::showTray(bool show, const QString &tooltip)
         return;
     }
     if (!m_tray) {
-        m_tray = new QSystemTrayIcon(appIcon(), this);
+        m_tray = new QSystemTrayIcon(trayIcon(), this);
         m_menu = new QMenu;
         connect(m_menu->addAction(u"Open Talos"_s), &QAction::triggered, this,
                 &Desktop::activateRequested);
@@ -120,6 +241,10 @@ void Desktop::notify(const QString &title, const QString &body)
         return;
     if (platform::notifyNative(title, body))
         return;
+#if defined(Q_OS_MACOS)
+    if (mac::postNotification({}, title, body, false))
+        return;
+#endif
 #if defined(TALOS_HAVE_DBUS)
     // The desktop notification service works whether or not there is a tray.
     QDBusInterface service(u"org.freedesktop.Notifications"_s, u"/org/freedesktop/Notifications"_s,
@@ -183,6 +308,9 @@ void Desktop::notifyChat(const QString &chatId, const QString &title, const QStr
             return;
         }
     }
+#elif defined(Q_OS_MACOS)
+    if (mac::postNotification(chatId, title, body, canReply))
+        return;
 #else
     Q_UNUSED(chatId);
     Q_UNUSED(canReply);
