@@ -3,6 +3,7 @@
 
 #include <QByteArray>
 #include <QJsonObject>
+#include <QList>
 #include <QString>
 #include <QStringList>
 #include <QUrl>
@@ -17,6 +18,24 @@ struct HostInput {
     int port = -1; ///< -1 when none was written
     int tls = -1;  ///< -1 unknown, 0 http, 1 https
 };
+
+/// One more way to reach the same bridge, advertised by the daemon in its
+/// reply to a mesh registration: a second name, or the same name dialled
+/// at a fixed address so a DNS outage doesn't take the connection down.
+struct Endpoint {
+    /// Base URL. Its host is the TLS server name and the Host header, so a
+    /// reverse proxy still routes the request to the bridge.
+    QString url;
+    /// "ip:port" to connect to instead of resolving the URL's host.
+    QString dial;
+    QString label;
+
+    bool operator==(const Endpoint &) const = default;
+};
+
+/// The usable entries of a register reply's `endpoints` object (at most
+/// eight; anything malformed is dropped). @p version receives its `v`.
+QList<Endpoint> parseEndpoints(const QJsonObject &advertised, QString *version);
 
 /// How this client reaches one Talon daemon.
 ///
@@ -59,6 +78,14 @@ struct Profile {
     /// answers. The pin belongs to this address when it is set.
     QString localUrl;
 
+    /// Fallback addresses learned from the daemon, and the version it gave
+    /// the list. Never the configured address itself.
+    QList<Endpoint> endpoints;
+    QString endpointsVersion;
+    /// Set only on a profile made by viaEndpoint: "ip:port" to connect to
+    /// while still presenting `host` as the server name.
+    QString dial;
+
     bool isLoopback() const;
     bool hasClientCert() const { return !clientP12.isEmpty(); }
     bool enforcesPin() const { return tls && !fingerprint.isEmpty() && pinObserved; }
@@ -73,6 +100,12 @@ struct Profile {
     std::optional<Profile> lanEndpoint() const;
     /// The main address; the pin stays with the LAN address when there is one.
     Profile wanEndpoint() const;
+    /// This profile pointed at a learned fallback, or nothing when that
+    /// would be unsafe: a fallback must be https and must present the
+    /// certificate already pinned, so without a pin there are none.
+    std::optional<Profile> viaEndpoint(const Endpoint &endpoint) const;
+    /// The learned fallbacks this profile may actually use, in order.
+    QList<Endpoint> usableEndpoints() const;
 
     QJsonObject toJson(bool withSecrets) const;
     QJsonObject secretsJson() const;

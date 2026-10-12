@@ -106,6 +106,8 @@ Session::Session(Store *store, QObject *parent, bool narrow)
 
     m_retry.setSingleShot(true);
     connect(&m_retry, &QTimer::timeout, this, &Session::start);
+    m_failback.setInterval(5 * 60 * 1000);
+    connect(&m_failback, &QTimer::timeout, this, &Session::probeConfigured);
 
     m_snapshotTimer.setSingleShot(true);
     m_snapshotTimer.setInterval(2000);
@@ -188,6 +190,9 @@ QVariantMap Session::endpointVariant() const
         {u"deviceCredential"_s, isDeviceCredential(e.token)},
         {u"hasToken"_s, !e.token.isEmpty()},
         {u"bridgeKey"_s, saved.bridgeKey()},
+        // On one of the daemon's fallback addresses instead of the one saved.
+        {u"fallback"_s, m_client && m_endpointIndex > 0},
+        {u"fallbacks"_s, int(saved.usableEndpoints().size())},
     };
 }
 
@@ -330,6 +335,19 @@ void Session::start()
         return;
     }
 
+    if (m_endpointIndex > 0) {
+        const QList<Endpoint> fallbacks = profile.usableEndpoints();
+        const auto via = m_endpointIndex <= fallbacks.size()
+            ? profile.viaEndpoint(fallbacks.at(m_endpointIndex - 1)) : std::nullopt;
+        if (via) {
+            // The pin is the profile's own; a fallback never sets one.
+            connectTo(*via, epoch, false);
+            return;
+        }
+        // The list changed under us.
+        m_endpointIndex = 0;
+    }
+
     if (const auto lan = profile.lanEndpoint()) {
         // Prefer the home-network address whenever it answers. The probe
         // carries no credential.
@@ -410,6 +428,10 @@ void Session::onStreamOpen(int epoch, bool persistPin)
     m_retriedAuth = false;
     adoptFingerprint(persistPin);
     m_backoffMs = 800;
+    if (m_endpointIndex > 0)
+        m_failback.start();
+    else
+        m_failback.stop();
     m_byeDelayMs = -1;
     // Whatever was streaming when the last connection dropped may have
     // finished unseen; a turn still running announces itself again.
@@ -444,10 +466,88 @@ void Session::onStreamClosed(const ApiResult &why)
     scheduleReconnect();
 }
 
+bool Session::advanceEndpoint(const ApiResult &why)
+{
+    const Profile profile = m_store->activeProfileMeta();
+    const int fallbacks = profile.local ? 0 : int(profile.usableEndpoints().size());
+    if (fallbacks == 0) {
+        m_endpointIndex = 0;
+        return false;
+    }
+    // Only a failure to get through moves on: a refused credential or an
+    // application error would be the same at every address. A fallback
+    // showing some other certificate is refused, and counts as unreachable.
+    const bool unreachable = why.kind == ApiResult::Network || why.kind == ApiResult::Timeout
+        || (why.kind == ApiResult::Http && (why.status == 502 || why.status == 503 || why.status == 504))
+        || (why.kind == ApiResult::CertificateChanged && m_endpointIndex > 0);
+    // A daemon that said it is restarting is down everywhere at once.
+    if (!unreachable || nowMs() < m_fastRetryUntil)
+        return false;
+    m_endpointIndex = (m_endpointIndex + 1) % (fallbacks + 1);
+    AppLog::info("session", m_endpointIndex == 0
+                     ? u"no address answered; starting again from the configured one"_s
+                     : u"trying fallback address %1 of %2"_s.arg(m_endpointIndex).arg(fallbacks));
+    // Back at the start means every address was tried: wait out the backoff.
+    return m_endpointIndex != 0;
+}
+
+void Session::probeConfigured()
+{
+    if (m_endpointIndex == 0 || m_conn != Connected) {
+        m_failback.stop();
+        return;
+    }
+    Profile bare = m_store->activeProfile().wanEndpoint();
+    bare.token.clear();
+    const int epoch = m_epoch;
+    auto *probe = new BridgeClient(bare, this);
+    probe->health([this, probe, epoch](const ApiResult &r) {
+        probe->deleteLater();
+        if (epoch != m_epoch || m_endpointIndex == 0 || !r.ok())
+            return;
+        AppLog::info("session", u"the configured address answers again; returning to it"_s);
+        m_endpointIndex = 0;
+        m_backoffMs = 800;
+        start();
+    }, 5000);
+}
+
+void Session::learnEndpoints(const QJsonObject &advertised)
+{
+    const Profile profile = m_store->activeProfileMeta();
+    if (profile.local)
+        return;
+    QString version;
+    const QList<Endpoint> list = parseEndpoints(advertised, &version);
+    if (list == profile.endpoints && version == profile.endpointsVersion)
+        return;
+    m_store->setProfileEndpoints(profile.id, list, version);
+    AppLog::info("session", u"the daemon advertises %1 address(es) for this bridge"_s.arg(list.size()));
+    emit endpointChanged();
+}
+
+void Session::checkCredential()
+{
+    maybeUpgradeCredential(m_epoch);
+}
+
 void Session::fail(const ApiResult &why)
 {
     if (reloadCredential(why))
         return;
+    const bool onFallback = m_endpointIndex > 0;
+    if (advanceEndpoint(why)) {
+        setConn(Connecting);
+        m_retry.start(250);
+        return;
+    }
+    if (onFallback && why.kind == ApiResult::CertificateChanged) {
+        // Not this bridge's certificate, so not this bridge. The pin, and
+        // the configured address it came from, are untouched.
+        setConn(Error, why.error);
+        scheduleReconnect();
+        return;
+    }
     setConn(Error, why.error, why.fatal());
     // A wrong token or a changed certificate never heals by retrying.
     if (!why.fatal())
@@ -620,6 +720,7 @@ void Session::resetStores()
 void Session::applyProfile(const Profile &profile)
 {
     ++m_epoch;
+    m_endpointIndex = 0;
     m_retry.stop();
     dropClient();
     m_store->saveProfile(profile, true);
@@ -635,6 +736,7 @@ void Session::switchProfile(const QString &id)
     if (id == m_store->activeProfileId())
         return;
     ++m_epoch;
+    m_endpointIndex = 0;
     m_retry.stop();
     dropClient();
     m_store->setActiveProfile(id);
@@ -648,6 +750,7 @@ void Session::switchProfile(const QString &id)
 void Session::forgetEverything()
 {
     ++m_epoch;
+    m_endpointIndex = 0;
     m_retry.stop();
     dropClient();
     m_store->clearProfiles();
@@ -1749,14 +1852,15 @@ void Session::setBackend(const QString &chatId, const QString &backend, QJSValue
 
 // ── Daemon surfaces ─────────────────────────────────────────────────────────
 
-void Session::search(const QString &text, QJSValue done)
+void Session::search(const QString &text, const QString &chatId, QJSValue done)
 {
     const QString q = text.trimmed();
     if (!m_client || m_conn != Connected || q.isEmpty()) {
         reply(done, QVariantList());
         return;
     }
-    m_client->get(u"/search"_s, query({{u"q"_s, q}}), [this, done](const ApiResult &r) {
+    m_client->get(u"/search"_s, query({{u"q"_s, q}, {u"chatId"_s, chatId}}),
+                  [this, done](const ApiResult &r) {
         QVariantList out;
         for (const auto &v : r.json["results"_L1].toArray()) {
             const QJsonObject o = v.toObject();

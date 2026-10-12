@@ -54,6 +54,86 @@ std::optional<Profile> Profile::lanEndpoint() const
     return p;
 }
 
+namespace {
+
+/// "203.0.113.7:443" or "[2001:db8::1]:443": an IP literal and a port.
+bool splitDial(const QString &dial, QString *ip, int *port)
+{
+    const QUrl u(u"//"_s + dial.trimmed());
+    QString host = u.host();
+    if (!u.isValid() || host.isEmpty() || u.port() <= 0 || !u.path().isEmpty())
+        return false;
+    if (host.startsWith(u'['))
+        host = host.mid(1, host.size() - 2);
+    if (QHostAddress(host).isNull())
+        return false;
+    *ip = host;
+    *port = u.port();
+    return true;
+}
+
+} // namespace
+
+QList<Endpoint> parseEndpoints(const QJsonObject &advertised, QString *version)
+{
+    if (version)
+        *version = advertised["v"_L1].toString();
+    QList<Endpoint> out;
+    for (const QJsonValue v : advertised["list"_L1].toArray()) {
+        const QJsonObject o = v.toObject();
+        Endpoint e{o["url"_L1].toString().trimmed(), o["dial"_L1].toString().trimmed(),
+                   o["label"_L1].toString().simplified().left(60)};
+        const QUrl url(e.url);
+        const QString scheme = url.scheme().toLower();
+        if (!url.isValid() || url.host().isEmpty()
+            || (scheme != "https"_L1 && scheme != "http"_L1))
+            continue;
+        QString ip;
+        int port = 0;
+        if (!e.dial.isEmpty() && !splitDial(e.dial, &ip, &port))
+            continue;
+        if (!out.contains(e))
+            out << e;
+        if (out.size() == 8)
+            break;
+    }
+    return out;
+}
+
+std::optional<Profile> Profile::viaEndpoint(const Endpoint &endpoint) const
+{
+    // Trust on first use only ever happens at the configured address. A
+    // fallback is believed because it shows the certificate already pinned.
+    if (local || !tls || fingerprint.isEmpty())
+        return std::nullopt;
+    const QUrl url(endpoint.url);
+    if (url.scheme().toLower() != "https"_L1 || url.host().isEmpty())
+        return std::nullopt;
+    Profile p = *this;
+    p.host = url.host().toLower();
+    p.port = url.port(defaultPort(true));
+    p.tls = true;
+    p.pinObserved = true;
+    p.localUrl.clear();
+    p.dial = endpoint.dial;
+    return p;
+}
+
+QList<Endpoint> Profile::usableEndpoints() const
+{
+    QList<Endpoint> out;
+    for (const Endpoint &e : endpoints) {
+        const auto p = viaEndpoint(e);
+        if (!p)
+            continue;
+        // The daemon lists its public address too; that is where we already are.
+        if (p->dial.isEmpty() && p->host == host.toLower() && p->port == port)
+            continue;
+        out << e;
+    }
+    return out;
+}
+
 Profile Profile::wanEndpoint() const
 {
     if (localUrl.trimmed().isEmpty())
@@ -101,6 +181,18 @@ QJsonObject Profile::toJson(bool withSecrets) const
         {"localUrl"_L1, localUrl},
         {"hasClientCert"_L1, hasClientCert() || certStored},
     };
+    if (!endpoints.isEmpty() || !endpointsVersion.isEmpty()) {
+        QJsonArray list;
+        for (const Endpoint &e : endpoints) {
+            QJsonObject entry{{"url"_L1, e.url}};
+            if (!e.dial.isEmpty())
+                entry["dial"_L1] = e.dial;
+            if (!e.label.isEmpty())
+                entry["label"_L1] = e.label;
+            list << entry;
+        }
+        o["endpoints"_L1] = QJsonObject{{"v"_L1, endpointsVersion}, {"list"_L1, list}};
+    }
     if (withSecrets) {
         const QJsonObject s = secretsJson();
         for (auto it = s.begin(); it != s.end(); ++it)
@@ -128,6 +220,7 @@ Profile Profile::fromJson(const QJsonObject &j)
     p.fingerprint = normalizeFingerprint(j["fingerprint"_L1].toString());
     p.pinObserved = j["pinObserved"_L1].toBool(false) && !p.fingerprint.isEmpty();
     p.localUrl = j["localUrl"_L1].toString();
+    p.endpoints = parseEndpoints(j["endpoints"_L1].toObject(), &p.endpointsVersion);
     p.applySecrets(j);
     p.certStored = j["hasClientCert"_L1].toBool() || p.hasClientCert();
     return p;

@@ -180,7 +180,24 @@ QNetworkRequest BridgeClient::request(const QString &path, const QUrlQuery &quer
     QUrl url = m_endpoint.url(path);
     if (!query.isEmpty())
         url.setQuery(query);
+    // A fallback dialled at a fixed address: connect there, but stay the
+    // same server as far as TLS and the reverse proxy are concerned.
+    const QUrl dial(u"//"_s + m_endpoint.dial);
+    const QByteArray named = url.authority(QUrl::FullyEncoded).toLatin1();
+    const QString serverName = url.host();
+    const bool dialled = !m_endpoint.dial.isEmpty() && dial.isValid() && dial.port() > 0;
+    if (dialled) {
+        url.setHost(dial.host());
+        url.setPort(dial.port());
+    }
     QNetworkRequest req(url);
+    if (dialled) {
+        req.setPeerVerifyName(serverName);
+        req.setRawHeader("Host", named);
+        // HTTP/2 takes its :authority from the URL, which now holds the
+        // address; HTTP/1.1 sends the Host header above.
+        req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
+    }
     // The credential always travels in the header, never the URL: URLs end
     // up in proxy logs and in error text.
     if (!m_endpoint.token.isEmpty())

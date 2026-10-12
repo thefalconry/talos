@@ -5,6 +5,7 @@ import QtQuick.Layouts
 import Talos.Native
 
 // Ctrl+K: run an action, jump to a chat, or search every message.
+// Ctrl+F: search the messages of the open chat only.
 C.Popup {
     id: cmd
 
@@ -12,6 +13,16 @@ C.Popup {
     property var hits: []
     property int current: 0
     property bool searching: false
+    /// Set while the search is confined to one chat; then only its messages
+    /// are listed.
+    property string scopeChatId
+    property string scopeTitle
+
+    function openInChat(chatId, title) {
+        scopeChatId = chatId
+        scopeTitle = title
+        open()
+    }
 
     readonly property var actions: [
         { label: qsTr("New chat"), icon: "plus", hint: "Ctrl+N", keys: "new create start", run: () => win.newChat() },
@@ -38,6 +49,14 @@ C.Popup {
     readonly property var rows: {
         const q = input.text.trim().toLowerCase()
         const out = []
+        if (scopeChatId !== "") {
+            for (const h of hits) {
+                out.push({ kind: "message", label: h.text, icon: "search", hint: App.relativeTime(h.ts),
+                           detail: h.fromUser ? qsTr("You") : App.session.botName,
+                           run: () => win.openChat(h.chatId) })
+            }
+            return out
+        }
         for (const a of actions) {
             if (q === "" || a.label.toLowerCase().includes(q) || a.keys.includes(q))
                 out.push({ kind: "action", label: a.label, icon: a.icon, hint: a.hint, detail: "", run: a.run })
@@ -85,6 +104,10 @@ C.Popup {
         hits = []
         current = 0
     }
+    onClosed: {
+        scopeChatId = ""
+        scopeTitle = ""
+    }
     onOpened: input.forceActiveFocus()
 
     C.Overlay.modal: Rectangle { color: Theme.scrim }
@@ -107,8 +130,9 @@ C.Popup {
                 return
             }
             cmd.searching = true
-            App.session.search(q, function (results) {
-                if (input.text.trim() !== q)
+            const scope = cmd.scopeChatId
+            App.session.search(q, scope, function (results) {
+                if (input.text.trim() !== q || cmd.scopeChatId !== scope)
                     return
                 cmd.hits = results.slice(0, 20)
                 cmd.searching = false
@@ -130,7 +154,9 @@ C.Popup {
                 id: input
                 Layout.fillWidth: true
                 implicitHeight: 44
-                placeholderText: qsTr("Search chats and messages, or run a command")
+                placeholderText: cmd.scopeChatId !== ""
+                                 ? qsTr("Search in “%1”").arg(cmd.scopeTitle)
+                                 : qsTr("Search chats and messages, or run a command")
                 placeholderTextColor: Theme.textTertiary
                 color: Theme.text
                 font.pixelSize: Theme.reading

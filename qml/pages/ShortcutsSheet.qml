@@ -9,6 +9,7 @@ Sheet {
 
     readonly property var keys: [
         ["Ctrl+K", qsTr("Search, jump to a chat, run a command")],
+        ["Ctrl+F", qsTr("Search the open chat")],
         ["Ctrl+N", qsTr("New chat")],
         ["Ctrl+B", qsTr("Show or hide the sidebar")],
         ["Ctrl+,", qsTr("Settings")],

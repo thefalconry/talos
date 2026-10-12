@@ -68,6 +68,7 @@ QVariantMap defaultPrefs()
         {u"meshMaxQueued"_s, 16},
         {u"meshMaxWriteGiB"_s, 4},
         {u"meshService"_s, false},          // the background service is installed
+        {u"meshBackground"_s, false},       // Android: stay connected with the window closed
         {u"meshScreenControl"_s, false},    // Talon may see and drive the screen
         {u"screenRestoreToken"_s, QString()}, // the desktop's remembered grant
         // App lock (the lock record itself lives in the secret store)
@@ -293,6 +294,23 @@ QVariantList Store::profilesVariant() const
         out << m;
     }
     return out;
+}
+
+void Store::setProfileEndpoints(const QString &id, const QList<Endpoint> &endpoints,
+                                const QString &version)
+{
+    for (Profile &existing : m_profiles) {
+        if (existing.id != id)
+            continue;
+        if (existing.endpoints == endpoints && existing.endpointsVersion == version)
+            return;
+        existing.endpoints = endpoints;
+        existing.endpointsVersion = version;
+        m_activeCache.reset();
+        writeProfiles();
+        emit profilesChanged();
+        return;
+    }
 }
 
 void Store::saveProfile(const Profile &profile, bool makeActive)

@@ -1031,6 +1031,105 @@ private slots:
         QVERIFY(!isPairPageUrl(u"https://mesh.example.org/pair"_s));
     }
 
+    void endpointLists()
+    {
+        QString version;
+        const QList<Endpoint> list = parseEndpoints(QJsonObject{
+            {"v"_L1, u"abc"_s},
+            {"list"_L1, QJsonArray{
+                QJsonObject{{"url"_L1, u"https://mesh.example.org"_s}},
+                QJsonObject{{"url"_L1, u"https://mesh.example.org"_s},
+                            {"dial"_L1, u"203.0.113.7:443"_s}, {"label"_L1, u"direct v4"_s}},
+                QJsonObject{{"url"_L1, u"https://mesh.example.org"_s},
+                            {"dial"_L1, u"[2001:db8::1]:443"_s}},
+                QJsonObject{{"url"_L1, u"https://mesh.example.net"_s}},
+                // Dropped: a name where an address belongs, no port, not a URL.
+                QJsonObject{{"url"_L1, u"https://mesh.example.org"_s}, {"dial"_L1, u"evil.example:443"_s}},
+                QJsonObject{{"url"_L1, u"https://mesh.example.org"_s}, {"dial"_L1, u"203.0.113.7"_s}},
+                QJsonObject{{"url"_L1, u"ftp://mesh.example.org"_s}},
+            }}}, &version);
+        QCOMPARE(version, u"abc"_s);
+        QCOMPARE(list.size(), 4);
+
+        Profile p = Profile::defaults();
+        p.local = false;
+        p.host = u"mesh.example.org"_s;
+        p.tls = true;
+        p.port = 443;
+        p.endpoints = list;
+        // No pin, no fallbacks: first-use trust belongs to the configured
+        // address alone.
+        QVERIFY(p.usableEndpoints().isEmpty());
+        p.fingerprint = QString(64, u'a');
+        // The daemon's own public address is where we already are.
+        QCOMPARE(p.usableEndpoints().size(), 3);
+        const auto via = p.viaEndpoint(list.at(1));
+        QVERIFY(via.has_value());
+        QCOMPARE(via->host, u"mesh.example.org"_s);
+        QCOMPARE(via->dial, u"203.0.113.7:443"_s);
+        QVERIFY(via->enforcesPin());
+        // Survives the settings file.
+        const Profile back = Profile::fromJson(p.toJson(false));
+        QCOMPARE(back.endpoints, list);
+        QCOMPARE(back.endpointsVersion, QString());
+        p.tls = false;
+        QVERIFY(p.usableEndpoints().isEmpty());
+    }
+
+    void fallbackEndpoints()
+    {
+        if (!haveOpenssl())
+            QSKIP("openssl is not available");
+        QTemporaryDir home, certs, otherCerts;
+        Mock fallback, stranger, primary;
+        if (!fallback.start({u"--tls"_s}, certs.path()))
+            QSKIP("node is not available");
+        QVERIFY(stranger.start({u"--tls"_s}, otherCerts.path()));
+        const int fallbackPort = fallback.info["port"_L1].toInt();
+        // Two fallbacks: one that is some other server entirely, and the
+        // real one under a name that doesn't resolve, dialled by address.
+        const QJsonArray advertised{
+            QJsonObject{{"url"_L1, u"https://127.0.0.1:%1"_s.arg(stranger.info["port"_L1].toInt())}},
+            QJsonObject{{"url"_L1, u"https://bridge.invalid:%1"_s.arg(fallbackPort)},
+                        {"dial"_L1, u"127.0.0.1:%1"_s.arg(fallbackPort)}, {"label"_L1, u"direct"_s}},
+        };
+        QVERIFY(primary.start({u"--tls"_s, u"--endpoints"_s,
+                               QString::fromUtf8(QJsonDocument(advertised).toJson(QJsonDocument::Compact))},
+                              certs.path()));
+        const QString pin = primary.info["fingerprint"_L1].toString();
+        QCOMPARE(fallback.info["fingerprint"_L1].toString(), pin);
+        QVERIFY(stranger.info["fingerprint"_L1].toString() != pin);
+        const int primaryPort = primary.info["port"_L1].toInt();
+
+        Store store(home.path());
+        Session session(&store);
+        MeshService mesh(&store, &session);
+        session.setFailbackIntervalMs(400);
+        store.setPref(u"meshSharing"_s, true);
+        session.applyProfile(primary.profile());
+        QTRY_COMPARE_WITH_TIMEOUT(session.conn(), int(Session::Connected), 10'000);
+        // The list arrives with the mesh registration.
+        QTRY_COMPARE_WITH_TIMEOUT(store.activeProfileMeta().usableEndpoints().size(), 2, 5000);
+        QVERIFY(!session.endpointVariant()[u"fallback"_s].toBool());
+
+        primary.stop();
+        QTRY_VERIFY_WITH_TIMEOUT(session.conn() == Session::Connected
+                                     && session.activeEndpoint().port == fallbackPort, 20'000);
+        QCOMPARE(session.activeEndpoint().host, u"bridge.invalid"_s);
+        QVERIFY(session.endpointVariant()[u"fallback"_s].toBool());
+        // The stranger was refused at the handshake and changed nothing.
+        QCOMPARE(store.activeProfileMeta().fingerprint, pin);
+        QVERIFY(stranger.state()["streams"_L1].toArray().isEmpty());
+        QCOMPARE(fallback.state()["streams"_L1].toArray().size(), 1);
+
+        // The configured address comes back, and so does the session.
+        Mock again;
+        QVERIFY(again.start({u"--tls"_s, u"--port"_s, QString::number(primaryPort)}, certs.path()));
+        QTRY_VERIFY_WITH_TIMEOUT(session.conn() == Session::Connected
+                                     && session.activeEndpoint().port == primaryPort, 20'000);
+        QVERIFY(!session.endpointVariant()[u"fallback"_s].toBool());
+    }
+
     void certificateBundleFormats()
     {
         if (!haveOpenssl())

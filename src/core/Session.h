@@ -97,6 +97,13 @@ public:
     /// The endpoint in use, which in local mode carries the discovered port
     /// and token the saved profile does not.
     Profile activeEndpoint() const;
+    /// Take the fallback addresses a mesh registration reply advertised.
+    void learnEndpoints(const QJsonObject &advertised);
+    /// The daemon hinted, outside a connect, that the credential should be
+    /// traded or rotated.
+    void checkCredential();
+    /// How often, while on a fallback, the configured address is tried again.
+    void setFailbackIntervalMs(int ms) { m_failback.setInterval(ms); }
     bool hasCapability(const QString &name) const;
     bool isTurnRunning(const QString &chatId) const;
     const QList<Message> *messagesOf(const QString &chatId) const;
@@ -149,7 +156,8 @@ public:
     Q_INVOKABLE void setBackend(const QString &chatId, const QString &backend, QJSValue done);
 
     // ── Daemon surfaces ─────────────────────────────────────────────────────
-    Q_INVOKABLE void search(const QString &query, QJSValue done);
+    /// Full-text search on the daemon. An empty @p chatId searches every chat.
+    Q_INVOKABLE void search(const QString &query, const QString &chatId, QJSValue done);
     Q_INVOKABLE void loadConfig();
     Q_INVOKABLE void updateConfig(const QVariantMap &patch, QJSValue done);
     Q_INVOKABLE void control(const QString &action, QJSValue done);
@@ -278,6 +286,15 @@ private:
     bool m_credentialsUnsupported = false;
     bool m_snapshots = true;
     bool m_retriedAuth = false;
+
+    /// Which address a connect attempt uses: 0 is the configured one, n the
+    /// profile's n-th usable fallback. It stays where a connection last
+    /// worked, and moves on when one can't be reached.
+    int m_endpointIndex = 0;
+    /// While on a fallback: checks whether the configured address is back.
+    QTimer m_failback;
+    bool advanceEndpoint(const ApiResult &why);
+    void probeConfigured();
     bool reloadCredential(const ApiResult &why);
     bool m_upgrading = false;
 

@@ -95,6 +95,12 @@ Rectangle {
                         onTriggered: page.win.renameChat(App.session.selectedChatId, page.chat.title)
                     }
                     TMenuItem {
+                        text: qsTr("Search this chat")
+                        iconName: "search"
+                        hint: "Ctrl+F"
+                        onTriggered: page.win.searchChat()
+                    }
+                    TMenuItem {
                         text: qsTr("Model and effort")
                         iconName: "cpu"
                         onTriggered: modelPicker.open()

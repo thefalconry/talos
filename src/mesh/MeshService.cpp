@@ -12,6 +12,7 @@
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
+#include <QRegularExpression>
 #include <QFile>
 #include <QFileInfo>
 #include <QFutureWatcher>
@@ -129,6 +130,10 @@ QStringList MeshService::capabilities() const
     QStringList caps = capabilitiesFor(control);
     if (control && canUpdateSelf())
         caps << u"update_node"_s;
+#if defined(Q_OS_ANDROID)
+    if (control)
+        caps << u"install_apk"_s;
+#endif
     if (control && computerHandler && m_store->prefBool(u"meshScreenControl"_s))
         caps << u"computer"_s;
     return caps;
@@ -167,7 +172,7 @@ bool MeshService::needsApproval(const QString &command)
 {
     return DeviceExec::capabilities().contains(command) || command == "upload_file"_L1
         || command == "download_file"_L1 || command == "update_node"_L1
-        || command == "computer"_L1;
+        || command == "computer"_L1 || command == "install_apk"_L1;
 }
 
 int MeshService::heartbeatDelayMs(int failures)
@@ -330,6 +335,14 @@ void MeshService::registerNow()
             m_lastError.clear();
             if (first)
                 m_session->refreshDevices();
+            // Present only when the daemon has a list to give; an empty one
+            // means forget what was learned.
+            if (r.json["endpoints"_L1].isObject())
+                m_session->learnEndpoints(r.json["endpoints"_L1].toObject());
+            // The same hint /auth/whoami gives at connect, repeated on the
+            // heartbeat so a rotation doesn't wait for the next reconnect.
+            if (r.json["credential"_L1].isObject())
+                m_session->checkCredential();
         } else {
             ++m_registerFailures;
             m_registered = false;
@@ -550,6 +563,8 @@ void MeshService::execute(const QString &id, const QString &name, const QJsonObj
         downloadFile(params, done);
     } else if (name == "update_node"_L1) {
         updateSelf(params, done);
+    } else if (name == "install_apk"_L1) {
+        installApk(params, done);
     } else if (name == "computer"_L1) {
         if (computerHandler && m_store->prefBool(u"meshScreenControl"_s))
             computerHandler(params, done);
@@ -608,6 +623,51 @@ QJsonObject MeshService::statusPayload() const
     for (auto it = info.begin(); it != info.end(); ++it)
         o[it.key()] = it.value().toString();
     return o;
+}
+
+// ── Installing a package (Android) ──────────────────────────────────────────
+
+void MeshService::installApk(const QJsonObject &params, DeviceExec::Done done)
+{
+    const QString path = params["path"_L1].toString();
+    if (path.isEmpty()) {
+        done(CommandOutcome::fail(u"install_apk needs the path of the APK on this device."_s));
+        return;
+    }
+    const QString expected = params["sha256"_L1].toString().trimmed().toLower();
+    if (!expected.isEmpty()) {
+        static const QRegularExpression digest(u"^[0-9a-f]{64}$"_s);
+        if (!digest.match(expected).hasMatch()) {
+            done(CommandOutcome::fail(u"APK integrity check failed: that is not a SHA-256 "
+                                      "digest. Nothing was installed."_s));
+            return;
+        }
+        QFile apk(path);
+        QCryptographicHash hash(QCryptographicHash::Sha256);
+        if (!apk.open(QIODevice::ReadOnly) || !hash.addData(&apk)) {
+            done(CommandOutcome::fail(u"No readable APK at %1."_s.arg(path)));
+            return;
+        }
+        const QString actual = QString::fromLatin1(hash.result().toHex());
+        if (actual != expected) {
+            done(CommandOutcome::fail(u"APK integrity check failed: expected %1, got %2. "
+                                      "Nothing was installed."_s.arg(expected, actual)));
+            return;
+        }
+    }
+    const QString error = platform::installPackage(path);
+    if (!error.isEmpty()) {
+        done(CommandOutcome::fail(u"install_apk: %1"_s.arg(error)));
+        return;
+    }
+    CommandOutcome o;
+    o.ok = true;
+    // Android installs nothing without a tap unless the app has root or
+    // Shizuku, which this one does not use.
+    o.message = u"Handed to the system installer. The person holding the device has to confirm "
+                "it on screen; check appVersion with get_device_status afterwards."_s;
+    o.data = {{"confirmation"_L1, u"required"_s}};
+    done(o);
 }
 
 // ── Updating this program ───────────────────────────────────────────────────

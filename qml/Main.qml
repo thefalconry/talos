@@ -97,6 +97,14 @@ C.ApplicationWindow {
     }
 
     function openPalette() { commandPalette.open() }
+    /// Search the open chat; with none open, search everything.
+    function searchChat() {
+        const id = App.session.selectedChatId
+        if (id === "" || settingsOpen)
+            commandPalette.open()
+        else
+            commandPalette.openInChat(id, App.session.chat.title)
+    }
     function openShortcuts() { shortcuts.open() }
     function openModelPicker() {
         settingsOpen = false
@@ -349,7 +357,8 @@ C.ApplicationWindow {
 
     // ── Keyboard ────────────────────────────────────────────────────────────
 
-    Shortcut { sequences: ["Ctrl+K", StandardKey.Find]; enabled: !App.lock.locked; onActivated: commandPalette.open() }
+    Shortcut { sequences: ["Ctrl+K"]; enabled: !App.lock.locked; onActivated: commandPalette.open() }
+    Shortcut { sequences: [StandardKey.Find]; enabled: !App.lock.locked; onActivated: root.searchChat() }
     Shortcut { sequences: ["Ctrl+N"]; enabled: !App.lock.locked; onActivated: root.newChat() }
     Shortcut { sequences: ["Ctrl+,"]; enabled: !App.lock.locked; onActivated: root.openSettings() }
     Shortcut { sequences: ["Ctrl+B"]; enabled: !App.lock.locked; onActivated: root.toggleSidebar() }

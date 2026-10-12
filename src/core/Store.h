@@ -59,6 +59,10 @@ public:
     /// Any saved profile with its credentials, or nullopt.
     std::optional<Profile> profileById(const QString &id) const;
     void saveProfile(const Profile &profile, bool makeActive);
+    /// Replace a profile's learned fallback addresses. Its secrets and the
+    /// active profile are left alone.
+    void setProfileEndpoints(const QString &id, const QList<Endpoint> &endpoints,
+                             const QString &version);
     Q_INVOKABLE void removeProfile(const QString &id);
     void setActiveProfile(const QString &id);
     void clearProfiles();

@@ -124,6 +124,7 @@ private:
                 const CommandOutcome &outcome, qint64 startedMs);
     bool acquire();
     void updateSelf(const QJsonObject &params, DeviceExec::Done done);
+    void installApk(const QJsonObject &params, DeviceExec::Done done);
     void uploadFile(const QJsonObject &params, DeviceExec::Done done);
     void downloadFile(const QJsonObject &params, DeviceExec::Done done);
     QJsonObject statusPayload() const;

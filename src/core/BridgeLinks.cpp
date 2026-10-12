@@ -97,6 +97,8 @@ bool BridgeLinks::isBridgeUrl(const QUrl &url) const
         mine << originOf(QUrl(saved.baseUrl()));
         if (const auto lan = saved.lanEndpoint())
             mine << originOf(QUrl(lan->baseUrl()));
+        for (const Endpoint &e : saved.usableEndpoints())
+            mine << originOf(QUrl(e.url));
     }
     return mine.contains(origin);
 }

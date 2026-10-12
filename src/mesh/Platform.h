@@ -32,6 +32,12 @@ void setSecureWindow(bool on);
 /// gesture leaves an app on a phone (Android). False where there is no such
 /// thing and the caller should close the window instead.
 bool moveToBackground();
+/// Keep the process alive behind a visible notification while the window
+/// is closed, or stop doing so (Android). A no-op elsewhere.
+void setKeepAlive(bool on, const QString &text);
+/// Hand an APK to the system installer, which asks the person holding the
+/// device (Android). Empty when it was handed over, otherwise the reason.
+QString installPackage(const QString &path);
 /// Post a system notification on platforms without a tray (Android).
 bool notifyNative(const QString &title, const QString &body);
 

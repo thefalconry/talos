@@ -121,6 +121,8 @@ App::App(QObject *parent)
             updateTray();
         else if (key == "screenPrivacy"_L1)
             platform::setSecureWindow(m_store.prefBool(key));
+        else if (key == "meshSharing"_L1 || key == "meshBackground"_L1)
+            updateKeepAlive();
         else if (key == "autostart"_L1)
             m_desktop.setAutostart(m_store.prefBool(key));
         else if (key == "voiceName"_L1 || key == "voiceRate"_L1)
@@ -139,6 +141,9 @@ App::App(QObject *parent)
         if (active) {
             m_lock.setAppActive(true);
             m_session.resume();
+            // Android only lets the service start while the app is in
+            // front, so this is where a start that was refused is retried.
+            updateKeepAlive();
         } else if (state == Qt::ApplicationHidden || state == Qt::ApplicationSuspended) {
             // Losing focus on a desktop is not "away"; being put in the
             // background on a phone is.
@@ -667,6 +672,12 @@ void App::showWindow()
         m_window->showNormal();
     m_window->raise();
     m_window->requestActivate();
+}
+
+void App::updateKeepAlive()
+{
+    platform::setKeepAlive(m_store.prefBool(u"meshSharing"_s) && m_store.prefBool(u"meshBackground"_s),
+                           u"Staying reachable on the mesh"_s);
 }
 
 bool App::moveToBackground()

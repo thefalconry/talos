@@ -30,6 +30,7 @@ daemon's protocol definition rather than ported from the Flutter companion.
 - Slash commands: completion from the daemon's own list, with each
   command's arguments. On a daemon too old to have one, the app carries out
   `/stop`, `/reset`, `/model`, `/effort` and `/pulse` itself
+- Search every chat (Ctrl+K), or only the open one (Ctrl+F)
 - Queue a follow-up while a turn runs, edit or cancel it from any device
 - Stop a running turn
 - Per-chat model, reasoning effort and backend
@@ -64,6 +65,11 @@ daemon's protocol definition rather than ported from the Flutter companion.
 - Several saved connections; credentials live in the system keyring
 - Reconnects on its own: backoff, a dead-stream timeout, network changes,
   resume from sleep, and daemon restarts
+- Fallback addresses: when the daemon advertises other ways to reach it
+  (`native.endpoints`: a second name, or the same name at a fixed IP for
+  when DNS is down), Talos moves to the next one that answers and returns
+  to the saved address once it is back. A fallback is only used if it shows
+  the certificate already pinned
 
 **Talon itself**
 
@@ -239,18 +245,19 @@ tests/       unit and integration tests, protocol fixtures
   voice mode there reads replies and takes typed turns. There is no
   on-device neural voice (the companion's Kokoro model); the system's
   text-to-speech is used.
-- **Android background mesh.** The mesh runs while the app is alive. There
-  is no foreground service keeping it up after the app is swiped away.
-- **Fallback endpoints.** A daemon with `native.endpoints` set tells mesh
-  devices other ways to reach it (a second name, a fixed IP for when DNS is
-  down). talon-node follows that list; Talos stays on the address it was
-  given.
-- **Android root / Shizuku and `install_apk`.** Commands run as the app's own
-  user. `install_apk` is not offered and is refused if sent.
+- **Android background mesh.** With "Stay reachable with the app closed"
+  on, a foreground service keeps the connection up while Talos is in the
+  background. It does not survive Talos being swiped out of recent apps,
+  and nothing starts it at boot.
+- **`install_apk`** (Android) hands the package to the system installer,
+  which asks the person holding the phone to confirm. It is never silent:
+  that needs root or Shizuku, which Talos does not use, and `exec` likewise
+  runs as the app's own user.
 - **`computer`** covers screenshot, move, click, drag, scroll, type and key
   on Linux desktops that have the RemoteDesktop portal. `snapshot` (the
-  accessibility tree) is not implemented, and the pointer position reported
-  is where Talos last put it, because Wayland does not reveal the real one.
+  accessibility tree) is not implemented; talon-node only has it on macOS.
+  The pointer position reported is where Talos last put it, because Wayland
+  does not reveal the real one.
 - **`update_node`** replaces a copy of Talos the user can write to (a build
   tree, a portable install). A system package is left to its package
   manager, and the capability is then not advertised.

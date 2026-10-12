@@ -152,6 +152,7 @@ private:
     void onMessage(const QString &chatId, const QString &title, const QString &text,
                    bool fromAssistant);
     void updateTray();
+    void updateKeepAlive();
 
     Store m_store;
     Session m_session;

@@ -34,8 +34,14 @@ Pane {
                    : App.session.conn === Session.Connecting
                      ? (App.session.connNote || qsTr("Connecting…"))
                      : App.session.conn === Session.Error ? qsTr("Not connected") : qsTr("Idle")
-            subtitle: App.session.conn === Session.Error ? App.session.connError
-                                                         : (pane.endpoint.address || "")
+            subtitle: App.session.conn === Session.Error
+                      ? App.session.connError
+                      : (pane.endpoint.address || "")
+                        + (pane.endpoint.fallback
+                           ? " · " + qsTr("a fallback address, while the saved one isn't answering")
+                           : pane.endpoint.fallbacks > 0
+                             ? " · " + qsTr("%n fallback address(es) known", "", pane.endpoint.fallbacks)
+                             : "")
 
             TButton {
                 compact: true

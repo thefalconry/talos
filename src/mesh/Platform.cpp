@@ -196,6 +196,37 @@ void setSecureWindow(bool on)
 #endif
 }
 
+void setKeepAlive(bool on, const QString &text)
+{
+#if defined(Q_OS_ANDROID)
+    QNativeInterface::QAndroidApplication::runOnAndroidMainThread([on, text] {
+        const QJniObject context = QNativeInterface::QAndroidApplication::context();
+        QJniObject::callStaticMethod<void>(
+            "dev/talos/client/MeshKeepAlive", "set",
+            "(Landroid/content/Context;ZLjava/lang/String;)V", context.object(), jboolean(on),
+            QJniObject::fromString(text).object<jstring>());
+    });
+#else
+    Q_UNUSED(on);
+    Q_UNUSED(text);
+#endif
+}
+
+QString installPackage(const QString &path)
+{
+#if defined(Q_OS_ANDROID)
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject error = QJniObject::callStaticObjectMethod(
+        "dev/talos/client/ApkInstaller", "install",
+        "(Landroid/content/Context;Ljava/lang/String;)Ljava/lang/String;", context.object(),
+        QJniObject::fromString(path).object<jstring>());
+    return error.isValid() ? error.toString() : QString();
+#else
+    Q_UNUSED(path);
+    return u"Installing packages is only possible on Android."_s;
+#endif
+}
+
 bool notifyNative(const QString &title, const QString &body)
 {
 #if defined(Q_OS_ANDROID)

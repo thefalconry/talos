@@ -13,7 +13,8 @@
 // Options: --port N (0 picks one) · --token T · --tls · --mtls · --dir D
 //          (where certificates go) · --discovery FILE (write a
 //          native-bridge.json there, like the daemon does) · --slow MS ·
-//          --no-commands (behave like a daemon that predates slash commands)
+//          --no-commands (behave like a daemon that predates slash commands) ·
+//          --endpoints JSON (fallback addresses for the register reply)
 //
 // On start it prints one JSON line: {port, scheme, fingerprint, token, ...}.
 // Test hooks (not part of the protocol): POST /__emit pushes any event to
@@ -39,6 +40,9 @@ const token = opt("token", "");
 const useTls = flag("tls") || flag("mtls");
 const useMtls = flag("mtls");
 const slow = Number(opt("slow", "35"));
+// Fallback addresses to advertise in the register reply, as JSON:
+// --endpoints '[{"url":"https://127.0.0.1:19881"}]'
+const endpoints = JSON.parse(opt("endpoints", "null"));
 // An older daemon: no `commands` capability, no GET /commands.
 const noCommands = flag("no-commands");
 // Only TLS needs somewhere to keep certificates; make it on demand.
@@ -478,8 +482,10 @@ async function handle(req, res) {
     case "GET /search": {
       const q = (url.searchParams.get("q") ?? "").toLowerCase();
       if (!q) return json(res, 400, { ok: false, error: "q required" });
+      const only = url.searchParams.get("chatId");
       const results = [];
       for (const [chatId, list] of messages) {
+        if (only && chatId !== only) continue;
         for (const m of list) {
           if (m.text.toLowerCase().includes(q)) {
             results.push({ chatId, chatTitle: chats.get(chatId)?.title ?? "", message: m });
@@ -685,7 +691,15 @@ async function handle(req, res) {
       if (!body.id) return json(res, 400, { ok: false, error: "id required" });
       state.registrations.push(body);
       devices.set(body.id, { ...body, online: true, lastSeen: now() });
-      return json(res, 200, { ok: true, deviceId: body.id });
+      return json(res, 200, {
+        ok: true, deviceId: body.id,
+        ...(endpoints ? {
+          endpoints: {
+            v: createHash("sha256").update(JSON.stringify(endpoints)).digest("hex"),
+            list: endpoints,
+          },
+        } : {}),
+      });
     }
     case "POST /location": {
       const body = await readJson(req);

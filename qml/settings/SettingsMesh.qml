@@ -30,6 +30,15 @@ Pane {
             }
         }
         SettingRow {
+            visible: App.prefs.meshSharing && App.platform === "android"
+            title: qsTr("Stay reachable with the app closed")
+            subtitle: qsTr("Keeps the connection up while Talos is in the background, behind a notification that stays visible. It ends when Talos is swiped out of recent apps.")
+            TSwitch {
+                checked: App.prefs.meshBackground
+                onToggled: App.prefs.meshBackground = checked
+            }
+        }
+        SettingRow {
             visible: App.prefs.meshSharing
             enabled: !pane.mesh.sandboxed
             title: qsTr("Let Talon control this device")
