@@ -2,6 +2,7 @@
 #include "app/App.h"
 #include "app/CodeHighlighter.h"
 #include "app/IconItem.h"
+#include "app/NoNetwork.h"
 #include "core/Store.h"
 #include "mesh/Headless.h"
 #include "mesh/ServiceInstall.h"
@@ -229,7 +230,11 @@ int main(int argc, char *argv[])
     qmlRegisterUncreatableType<talos::Session>("Talos.Native", 1, 0, "Session",
                                                u"Session is provided by App"_s);
 
+    // Before anything is loaded: nothing the window shows may fetch from
+    // the network by being displayed.
+    talos::NoNetworkFactory noNetwork;
     QQmlApplicationEngine engine;
+    engine.setNetworkAccessManagerFactory(&noNetwork);
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &qapp,
                      [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
     engine.loadFromModule("Talos", "Main");

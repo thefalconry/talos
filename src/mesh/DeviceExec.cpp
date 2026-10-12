@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include "mesh/DeviceExec.h"
 
+#include "core/Files.h"
+
 #include "mesh/Platform.h"
 
 #include <QDateTime>
@@ -11,6 +13,11 @@
 #include <QProcess>
 #include <QTimer>
 #include <memory>
+
+#if defined(Q_OS_UNIX)
+#  include <csignal>
+#  include <unistd.h>
+#endif
 
 namespace talos {
 
@@ -151,6 +158,11 @@ void DeviceExec::exec(const QString &cmd, const QString &cwd, int timeoutMs, Don
     proc->setArguments(shell.mid(1));
 #endif
     proc->setStandardInputFile(QProcess::nullDevice());
+#if defined(Q_OS_UNIX)
+    // Its own process group, so a timeout can stop everything the command
+    // started and not just the shell that started it.
+    proc->setChildProcessModifier([] { ::setpgid(0, 0); });
+#endif
 
     connect(proc, &QProcess::readyReadStandardOutput, proc,
             [proc, run] { run->out.add(proc->readAllStandardOutput()); });
@@ -161,6 +173,10 @@ void DeviceExec::exec(const QString &cmd, const QString &cwd, int timeoutMs, Don
     timer->setSingleShot(true);
     connect(timer, &QTimer::timeout, proc, [proc, run] {
         run->timedOut = true;
+#if defined(Q_OS_UNIX)
+        if (const qint64 pid = proc->processId(); pid > 0)
+            ::kill(-pid_t(pid), SIGKILL);
+#endif
         proc->kill();
     });
 
@@ -316,9 +332,7 @@ CommandOutcome DeviceExec::movePath(const QString &from, const QString &to) cons
     if (!QFileInfo::exists(from))
         return CommandOutcome::fail(u"No such path: %1"_s.arg(from));
     QDir().mkpath(QFileInfo(to).absolutePath());
-    if (QFileInfo(to).isFile())
-        QFile::remove(to);
-    if (QFile::rename(from, to))
+    if (moveOver(from, to))
         return CommandOutcome::done();
     return CommandOutcome::fail(u"move failed: %1 → %2"_s.arg(from, to));
 }

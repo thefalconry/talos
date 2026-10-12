@@ -20,8 +20,11 @@ public:
         QByteArrayList events;
         m_buffer += chunk;
         qsizetype start = 0;
+        // What is already known to hold no newline isn't searched again, so
+        // one large event arriving in many chunks stays linear.
+        qsizetype from = m_searched;
         while (true) {
-            const qsizetype nl = m_buffer.indexOf('\n', start);
+            const qsizetype nl = m_buffer.indexOf('\n', from);
             if (nl < 0)
                 break;
             qsizetype end = nl;
@@ -29,8 +32,14 @@ public:
                 --end;
             handleLine(QByteArrayView(m_buffer).sliced(start, end - start), events);
             start = nl + 1;
+            from = start;
         }
         m_buffer.remove(0, start);
+        m_searched = m_buffer.size();
+        // A stream that never ends a line, or an event, is not the bridge.
+        // Drop what has piled up rather than hold it without limit.
+        if (m_buffer.size() > kMaxEventBytes || m_data.size() > kMaxEventBytes)
+            reset();
         return events;
     }
 
@@ -39,6 +48,7 @@ public:
         m_buffer.clear();
         m_data.clear();
         m_hasData = false;
+        m_searched = 0;
     }
 
 private:
@@ -69,7 +79,11 @@ private:
         m_hasData = true;
     }
 
+    /// Far above any real event: a device command can carry a file chunk.
+    static constexpr qsizetype kMaxEventBytes = 64 * 1024 * 1024;
+
     QByteArray m_buffer;
+    qsizetype m_searched = 0;
     QByteArray m_data;
     bool m_hasData = false;
 };

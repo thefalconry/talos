@@ -2,6 +2,7 @@
 #include "mesh/MeshService.h"
 
 #include "core/AppLog.h"
+#include "core/Files.h"
 #include "core/BridgeClient.h"
 #include "core/Session.h"
 #include "core/Store.h"
@@ -244,7 +245,7 @@ void MeshService::attach(BridgeClient *client)
     m_client = client;
     if (!client)
         return;
-    connect(client, &BridgeClient::event, this, &MeshService::handleEvent);
+    connect(client, &BridgeClient::eventReceived, this, &MeshService::handleEvent);
     m_registerFailures = 0;
     if (sharing() && acquire()) {
         registerNow();
@@ -478,8 +479,15 @@ void MeshService::handleEvent(const QJsonObject &event)
         if (target.isEmpty() || target == mine)
             sendFix(true);
     } else if (kind == "device_command"_L1) {
-        if (target.isEmpty() || target != mine || event["id"_L1].toString().isEmpty())
+        const QString id = event["id"_L1].toString();
+        if (target.isEmpty() || target != mine || id.isEmpty())
             return;
+        // A command is run once, however many times its frame arrives.
+        if (m_seenCommands.contains(id))
+            return;
+        m_seenCommands.enqueue(id);
+        if (m_seenCommands.size() > 256)
+            m_seenCommands.dequeue();
         admit(event);
     }
 }
@@ -824,8 +832,7 @@ void MeshService::downloadFile(const QJsonObject &params, DeviceExec::Done done)
             return abandon(u"Integrity check failed (expected sha256 %1, got %2). The "
                            "download was discarded."_s.arg(wantSha, digest));
         }
-        QFile::remove(path);
-        if (!t->part.rename(path))
+        if (!moveOver(t->part.fileName(), path))
             return abandon(u"Couldn't move the download into place at %1"_s.arg(path));
         done(CommandOutcome::done({{"bytesWritten"_L1, t->received}, {"sha256"_L1, digest}}));
     });

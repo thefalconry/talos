@@ -8,7 +8,7 @@
 %global debug_package %{nil}
 
 Name:           talos
-Version:        0.1.3
+Version:        0.2.0
 Release:        1%{?dist}
 Summary:        Desktop client for the Talon agent
 
@@ -67,6 +67,10 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/dev.talos.client.desk
 %{_datadir}/icons/hicolor/scalable/apps/dev.talos.client.svg
 
 %changelog
+* Mon Oct 12 2026 RisenID <94130108+RisenID@users.noreply.github.com> - 0.2.0-1
+- Fallback addresses, search within a chat, and a round of hardening:
+  replies can no longer make the app load remote content
+
 * Mon Oct 12 2026 RisenID <94130108+RisenID@users.noreply.github.com> - 0.1.3-1
 - Slash commands on daemons that have no command list; pairing by page address
 

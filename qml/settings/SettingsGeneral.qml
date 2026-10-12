@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
 import QtQuick
-import QtQuick.Layouts
 import Talos.Native
 
 Pane {

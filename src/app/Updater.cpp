@@ -69,6 +69,16 @@ QString Updater::lastChecked() const
         : QString();
 }
 
+namespace {
+
+/// Addresses come out of the release's JSON; only an https one is followed.
+QString httpsOnly(const QString &url)
+{
+    return QUrl(url).scheme().toLower() == "https"_L1 ? url : QString();
+}
+
+} // namespace
+
 void Updater::set(const QString &state, const QString &error)
 {
     m_state = state;
@@ -85,7 +95,11 @@ int Updater::pickAsset(const QStringList &names, const QString &platform, const 
 {
     QStringList suffixes;
     if (platform == "linux"_L1)
-        suffixes = {u".appimage"_s, u".tar.gz"_s};
+        suffixes = {u".appimage"_s, u".rpm"_s, u".deb"_s, u".tar.gz"_s};
+    else if (platform == "linux-rpm"_L1)
+        suffixes = {u".rpm"_s, u".appimage"_s, u".tar.gz"_s};
+    else if (platform == "linux-deb"_L1)
+        suffixes = {u".deb"_s, u".appimage"_s, u".tar.gz"_s};
     else if (platform == "windows"_L1)
         suffixes = {u"setup.exe"_s, u".msi"_s, u".exe"_s, u".zip"_s};
     else if (platform == "macos"_L1)
@@ -154,7 +168,7 @@ void Updater::check()
         const QJsonObject rel = QJsonDocument::fromJson(reply->readAll()).object();
         m_latest = rel["tag_name"_L1].toString();
         m_notes = rel["body"_L1].toString().trimmed();
-        m_releaseUrl = rel["html_url"_L1].toString();
+        m_releaseUrl = httpsOnly(rel["html_url"_L1].toString());
         if (m_latest.isEmpty() || compareVersions(m_latest, currentVersion()) <= 0) {
             set(u"current"_s);
             return;
@@ -163,7 +177,15 @@ void Updater::check()
         const QJsonArray assets = rel["assets"_L1].toArray();
         for (const auto &a : assets)
             names << a.toObject()["name"_L1].toString();
-        const int pick = pickAsset(names, platform::name(), QSysInfo::currentCpuArchitecture());
+        // A system package is updated with a package of its own kind.
+        QString kind = platform::name();
+        if (kind == "linux"_L1 && !selfupdate::canReplaceSelf()) {
+            if (QFile::exists(u"/usr/bin/rpm"_s) && !QFile::exists(u"/usr/bin/dpkg"_s))
+                kind = u"linux-rpm"_s;
+            else if (QFile::exists(u"/usr/bin/dpkg"_s))
+                kind = u"linux-deb"_s;
+        }
+        const int pick = pickAsset(names, kind, QSysInfo::currentCpuArchitecture());
         m_assetName.clear();
         m_assetUrl.clear();
         m_checksumUrl.clear();
@@ -171,13 +193,13 @@ void Updater::check()
         if (pick >= 0) {
             const QJsonObject asset = assets.at(pick).toObject();
             m_assetName = names.at(pick);
-            m_assetUrl = asset["browser_download_url"_L1].toString();
+            m_assetUrl = httpsOnly(asset["browser_download_url"_L1].toString());
             m_assetBytes = qint64(asset["size"_L1].toDouble());
             for (const auto &a : assets) {
                 const QString n = a.toObject()["name"_L1].toString();
                 if (n.compare("SHA256SUMS"_L1, Qt::CaseInsensitive) == 0
                     || n.compare(m_assetName + ".sha256"_L1, Qt::CaseInsensitive) == 0) {
-                    m_checksumUrl = a.toObject()["browser_download_url"_L1].toString();
+                    m_checksumUrl = httpsOnly(a.toObject()["browser_download_url"_L1].toString());
                 }
             }
         }
@@ -246,7 +268,10 @@ void Updater::verify(const QString &path)
         m_file = path;
         m_verified = verified;
 #if defined(Q_OS_UNIX)
-        QFile::setPermissions(path, QFile::permissions(path) | QFile::ExeOwner);
+        // Only something checked against the release's own checksum is made
+        // runnable, and only the one format that is run directly.
+        if (verified && path.endsWith(".appimage"_L1, Qt::CaseInsensitive))
+            QFile::setPermissions(path, QFile::permissions(path) | QFile::ExeOwner);
 #endif
         set(u"ready"_s);
     };

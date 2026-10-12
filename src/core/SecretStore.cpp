@@ -7,6 +7,7 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLockFile>
 #include <QSaveFile>
 
 #if defined(TALOS_HAVE_DBUS)
@@ -69,6 +70,12 @@ bool SecretStore::fileWrite(const QString &key, const QByteArray *value)
         return false;
     QDir().mkpath(m_dir);
     const QString path = fallbackPath(m_dir);
+    // The app and its background service share this file; one read-modify-
+    // write at a time, or the slower writer undoes the faster one's change.
+    QLockFile lock(path + u".lock"_s);
+    lock.setStaleLockTime(10'000);
+    if (!lock.tryLock(3000))
+        AppLog::warn("secrets", u"the secrets file is busy; writing anyway"_s);
     QJsonObject o;
     if (QFile f(path); f.open(QIODevice::ReadOnly))
         o = QJsonDocument::fromJson(f.readAll()).object();

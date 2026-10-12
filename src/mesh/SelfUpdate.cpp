@@ -134,6 +134,11 @@ QString install(const QString &exe, const Request &req, QString *error)
             return fail(u"staging copy failed: %1"_s.arg(dst.errorString()));
         }
     }
+    if (!dst.flush()) {
+        dst.close();
+        QFile::remove(staged);
+        return fail(u"staging copy failed: %1"_s.arg(dst.errorString()));
+    }
     dst.close();
     const QString got = QString::fromLatin1(hash.result().toHex());
     if (got.compare(req.sha256, Qt::CaseInsensitive) != 0) {
@@ -163,6 +168,9 @@ QString install(const QString &exe, const Request &req, QString *error)
 #endif
     if (::rename(QFile::encodeName(staged).constData(), QFile::encodeName(exe).constData()) != 0) {
         QFile::remove(staged);
+#if defined(Q_OS_WIN)
+        QFile::rename(exe + u".old"_s, exe);
+#endif
         return fail(u"could not replace the running program"_s);
     }
     return pushed;

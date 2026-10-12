@@ -462,7 +462,7 @@ void BridgeClient::openEvents(int connectTimeoutMs)
             // An unparseable frame is dropped, never fatal: the protocol
             // evolves additively and one bad frame must not end the stream.
             if (doc.isObject())
-                emit event(doc.object());
+                emit eventReceived(doc.object());
             if (reply != m_events)
                 return; // a handler closed the stream
         }

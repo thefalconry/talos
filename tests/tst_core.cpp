@@ -9,6 +9,7 @@
 #include "core/BridgeClient.h"
 #include "core/BridgeLinks.h"
 #include "core/Crypto.h"
+#include "core/Files.h"
 #include "core/Markdown.h"
 #include "core/Models.h"
 #include "core/Profile.h"
@@ -275,6 +276,32 @@ private slots:
         QCOMPARE(got.at(2), QByteArray("{\"k\":\"é\"}"));
         // An unterminated event is not delivered.
         QVERIFY(p.feed("data: partial\n").isEmpty());
+    }
+
+    void markdownLoadsNothing()
+    {
+        const auto prose = [](const QString &text) {
+            return markdown::split(text).value(0).toMap().value(u"text"_s).toString();
+        };
+        // An image is something the text item would fetch; a link is
+        // something the reader may choose to open.
+        QCOMPARE(prose(u"See ![a chart](https://example.org/c.png \"t\") here"_s),
+                 u"See [a chart](https://example.org/c.png) here"_s);
+        QCOMPARE(prose(u"![](https://example.org/?q=secret)"_s),
+                 u"[image](https://example.org/?q=secret)"_s);
+        // HTML is shown, not rendered.
+        QCOMPARE(prose(u"a <img src=\"https://example.org/x\"> b</p>"_s),
+                 u"a &lt;img src=\"https://example.org/x\"> b&lt;/p>"_s);
+        // What isn't markup stays as written: comparisons, autolinks, and
+        // anything inside inline code.
+        QCOMPARE(prose(u"1 < 2 and <https://example.org> ok"_s),
+                 u"1 < 2 and <https://example.org> ok"_s);
+        QCOMPARE(prose(u"use `<img>` and ``![x](y)`` literally"_s),
+                 u"use `<img>` and ``![x](y)`` literally"_s);
+        QCOMPARE(prose(u"an unclosed ` then <b>"_s), u"an unclosed ` then &lt;b>"_s);
+        // Fenced code is a separate block and is never touched.
+        const QVariantList blocks = markdown::split(u"```html\n<img src=x>\n```"_s);
+        QCOMPARE(blocks.value(0).toMap().value(u"code"_s).toString(), u"<img src=x>"_s);
     }
 
     void markdownBlocks()
@@ -1128,6 +1155,105 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(session.conn() == Session::Connected
                                      && session.activeEndpoint().port == primaryPort, 20'000);
         QVERIFY(!session.endpointVariant()[u"fallback"_s].toBool());
+    }
+
+    void sseParserLargeAndRunaway()
+    {
+        // One big event in small pieces comes out whole.
+        SseParser p;
+        const QByteArray payload(3 * 1024 * 1024, 'x');
+        const QByteArray frame = "data: " + payload + "\n\n";
+        QByteArrayList got;
+        for (qsizetype i = 0; i < frame.size(); i += 8192)
+            got += p.feed(frame.mid(i, 8192));
+        QCOMPARE(got.size(), 1);
+        QCOMPARE(got.first().size(), payload.size());
+        // A stream that never ends its line is dropped, not kept forever,
+        // and the parser still works afterwards.
+        SseParser q;
+        const QByteArray junk(8 * 1024 * 1024, 'j');
+        for (int i = 0; i < 9; ++i)
+            QVERIFY(q.feed(junk).isEmpty());
+        QCOMPARE(q.feed("\ndata: ok\n\n"), QByteArrayList{"ok"});
+    }
+
+    void movingOverAFile()
+    {
+        QTemporaryDir dir;
+        const auto write = [&](const QString &name, const QByteArray &bytes) {
+            QFile f(dir.filePath(name));
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write(bytes);
+        };
+        const auto read = [&](const QString &name) {
+            QFile f(dir.filePath(name));
+            return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray("<missing>");
+        };
+        write(u"new"_s, "new");
+        write(u"old"_s, "old");
+        QVERIFY(moveOver(dir.filePath(u"new"_s), dir.filePath(u"old"_s)));
+        QCOMPARE(read(u"old"_s), QByteArray("new"));
+        QVERIFY(!QFile::exists(dir.filePath(u"new"_s)));
+        // A move that can't happen leaves what was there.
+        QVERIFY(!moveOver(dir.filePath(u"nothing"_s), dir.filePath(u"old"_s)));
+        QCOMPARE(read(u"old"_s), QByteArray("new"));
+    }
+
+    void execTimeoutStopsWhatItStarted()
+    {
+#if defined(Q_OS_UNIX)
+        QTemporaryDir dir;
+        DeviceExec exec;
+        CommandOutcome outcome;
+        bool done = false;
+        // The shell starts a child and waits on it; the child outlives the
+        // shell unless the whole group is stopped.
+        const QString pidFile = dir.filePath(u"pid"_s);
+        exec.handle(u"exec"_s,
+                    {{"cmd"_L1, u"sleep 60 & echo $! > '%1'; wait"_s.arg(pidFile)},
+                     {"timeoutMs"_L1, 1000}},
+                    [&](const CommandOutcome &o) {
+                        outcome = o;
+                        done = true;
+                    });
+        QTRY_VERIFY_WITH_TIMEOUT(done, 10'000);
+        QVERIFY(!outcome.ok);
+        QFile f(pidFile);
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        const QByteArray pid = f.readAll().trimmed();
+        QVERIFY(!pid.isEmpty());
+        QTRY_VERIFY_WITH_TIMEOUT(!QFile::exists(u"/proc/"_s + QString::fromLatin1(pid)), 5000);
+#else
+        QSKIP("process groups are a Unix matter");
+#endif
+    }
+
+    void meshRunsACommandOnce()
+    {
+        QTemporaryDir home, mockDir;
+        Mock mock;
+        if (!mock.start({}, mockDir.path()))
+            QSKIP("node is not available");
+        Store store(home.path());
+        Session session(&store);
+        MeshService mesh(&store, &session);
+        store.setPref(u"meshSharing"_s, true);
+        session.applyProfile(mock.profile());
+        QTRY_VERIFY_WITH_TIMEOUT(mesh.registered(), 10'000);
+        const QJsonObject frame{{"kind"_L1, u"device_command"_s}, {"id"_L1, u"cmd_twice"_s},
+                                {"deviceId"_L1, mesh.deviceId()}, {"name"_L1, u"status"_s},
+                                {"params"_L1, QJsonObject()}};
+        mock.emitEvent(frame);
+        mock.emitEvent(frame);
+        const auto answers = [&] {
+            int n = 0;
+            for (const auto &v : mock.state()["commandResults"_L1].toArray())
+                n += v.toObject()["commandId"_L1].toString() == "cmd_twice"_L1;
+            return n;
+        };
+        QTRY_COMPARE_WITH_TIMEOUT(answers(), 1, 5000);
+        QTest::qWait(400);
+        QCOMPARE(answers(), 1);
     }
 
     void certificateBundleFormats()

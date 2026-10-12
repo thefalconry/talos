@@ -2,6 +2,7 @@
 #include "core/MediaStore.h"
 
 #include "core/AppLog.h"
+#include "core/Files.h"
 #include "core/Session.h"
 
 #include <QCryptographicHash>
@@ -34,7 +35,8 @@ QString MediaStore::localPath(const QString &path, const QString &name) const
         QCryptographicHash::hash(key, QCryptographicHash::Sha1).toHex());
     // Keep the real name: the system picks the opening app from it.
     QString file = QFileInfo(name).fileName();
-    if (file.isEmpty())
+    // The name is the sender's; it only ever names a file in this folder.
+    if (file.isEmpty() || file == "."_L1 || file == ".."_L1)
         file = u"file"_s;
     return QDir(m_store->cacheDir()).filePath(u"media/%1/%2"_s.arg(hash, file));
 }
@@ -115,8 +117,31 @@ void MediaStore::whenReady(const QString &path, const QString &name,
     });
 }
 
+namespace {
+
+/// Files the system would run rather than show. Opening one from a chat is
+/// one click from running something the conversation was talked into
+/// sending, so those are left for the person to save and run deliberately.
+bool isProgram(const QString &name)
+{
+    static const QStringList kinds{
+        u"exe"_s, u"msi"_s, u"bat"_s, u"cmd"_s, u"com"_s, u"scr"_s, u"pif"_s, u"ps1"_s,
+        u"vbs"_s, u"js"_s, u"jse"_s, u"wsf"_s, u"hta"_s, u"lnk"_s, u"reg"_s, u"jar"_s,
+        u"sh"_s, u"run"_s, u"bin"_s, u"appimage"_s, u"desktop"_s, u"command"_s, u"app"_s,
+        u"pkg"_s, u"dmg"_s, u"apk"_s, u"deb"_s, u"rpm"_s, u"py"_s, u"pl"_s, u"rb"_s,
+    };
+    return kinds.contains(QFileInfo(name).suffix().toLower());
+}
+
+} // namespace
+
 void MediaStore::open(const QString &path, const QString &name)
 {
+    if (isProgram(name)) {
+        emit notice(u"%1 is a program or script, so it isn't opened from here. Save it, and "
+                    "run it yourself if you trust it."_s.arg(QFileInfo(name).fileName()));
+        return;
+    }
     whenReady(path, name, [this, name](const QString &local) {
         if (!QDesktopServices::openUrl(QUrl::fromLocalFile(local)))
             emit notice(u"No app on this device opens %1"_s.arg(name));
@@ -130,11 +155,16 @@ void MediaStore::saveTo(const QString &path, const QString &name, const QUrl &de
                                                  : destination.toString();
         if (QFileInfo(dest).isDir())
             dest = QDir(dest).filePath(QFileInfo(name).fileName());
-        QFile::remove(dest);
-        if (QFile::copy(local, dest))
+        // Copied beside the destination first, so a copy that fails midway
+        // doesn't cost the file it was going to replace.
+        const QString part = dest + u".part"_s;
+        QFile::remove(part);
+        if (QFile::copy(local, part) && moveOver(part, dest))
             emit notice(u"Saved %1"_s.arg(QFileInfo(dest).fileName()));
-        else
+        else {
+            QFile::remove(part);
             emit notice(u"Couldn't save to %1"_s.arg(dest));
+        }
     });
 }
 

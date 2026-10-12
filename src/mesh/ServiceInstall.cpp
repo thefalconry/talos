@@ -56,10 +56,11 @@ QString unitPath()
 
 QString unitText(const QString &exe)
 {
-    // systemd splits ExecStart on spaces unless the path is quoted, and
-    // reads % as a specifier.
+    // systemd splits ExecStart on spaces unless the path is quoted, reads %
+    // as a specifier and $ as the start of a variable.
     QString quoted = exe;
-    quoted.replace(u'\\', u"\\\\"_s).replace(u'"', u"\\\""_s).replace(u'%', u"%%"_s);
+    quoted.replace(u'\\', u"\\\\"_s).replace(u'"', u"\\\""_s).replace(u'%', u"%%"_s)
+        .replace(u'$', u"$$"_s);
     return u"[Unit]\n"
            "Description=Talos mesh device (background)\n"
            "After=network-online.target\n"

@@ -124,7 +124,7 @@ public:
 
 signals:
     void eventsOpened();
-    void event(const QJsonObject &event);
+    void eventReceived(const QJsonObject &event);
     /// The stream ended or never opened. Always follows openEvents() exactly
     /// once unless closeEvents() was called first.
     void eventsClosed(const talos::ApiResult &why);

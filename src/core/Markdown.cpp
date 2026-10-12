@@ -43,9 +43,89 @@ bool parseFence(QStringView line, Fence *out)
     return true;
 }
 
+/// Make prose safe to hand to a rich-text item.
+///
+/// The text item would fetch every image the Markdown names, and render any
+/// HTML in it. Neither should happen by merely displaying a reply, so an
+/// image becomes an ordinary link the reader can choose to open, and an HTML
+/// tag is shown as the characters it is. Inline code is left alone.
+QString disarm(const QString &text)
+{
+    static const QRegularExpression image(
+        u"\\G!\\[([^\\]\\n]*)\\]\\(\\s*<?([^)\\s>]+)>?[^)\\n]*\\)"_s);
+    static const QRegularExpression autolink(
+        u"\\G<(?:https?://|mailto:)[^\\s<>]*>"_s, QRegularExpression::CaseInsensitiveOption);
+    QString out;
+    out.reserve(text.size() + 16);
+    qsizetype i = 0;
+    const qsizetype n = text.size();
+    while (i < n) {
+        const QChar c = text.at(i);
+        if (c == u'`') {
+            // A code span: a run of backticks up to the next run of the
+            // same length. Without one, the backticks are just characters.
+            qsizetype run = 1;
+            while (i + run < n && text.at(i + run) == u'`')
+                ++run;
+            qsizetype close = -1;
+            for (qsizetype j = i + run; j < n;) {
+                if (text.at(j) != u'`') {
+                    ++j;
+                    continue;
+                }
+                qsizetype r = 1;
+                while (j + r < n && text.at(j + r) == u'`')
+                    ++r;
+                if (r == run) {
+                    close = j;
+                    break;
+                }
+                j += r;
+            }
+            const qsizetype end = close < 0 ? i + run : close + run;
+            out += QStringView(text).sliced(i, end - i);
+            i = end;
+            continue;
+        }
+        if (c == u'\\' && i + 1 < n) {
+            // An escaped character stays escaped.
+            out += c;
+            out += text.at(i + 1);
+            i += 2;
+            continue;
+        }
+        if (c == u'!') {
+            const auto m = image.match(text, i);
+            if (m.hasMatch()) {
+                const QString alt = m.captured(1).trimmed();
+                out += u'[' + (alt.isEmpty() ? u"image"_s : alt) + u"]("_s + m.captured(2) + u')';
+                i = m.capturedEnd();
+                continue;
+            }
+        }
+        if (c == u'<' && i + 1 < n) {
+            const QChar next = text.at(i + 1);
+            const auto link = autolink.match(text, i);
+            if (link.hasMatch()) {
+                out += link.capturedView();
+                i = link.capturedEnd();
+                continue;
+            }
+            if (next.isLetter() || next == u'/' || next == u'!' || next == u'?') {
+                out += u"&lt;"_s;
+                ++i;
+                continue;
+            }
+        }
+        out += c;
+        ++i;
+    }
+    return out;
+}
+
 void pushText(QVariantList &blocks, QStringList &lines)
 {
-    const QString text = lines.join(u'\n').trimmed();
+    const QString text = disarm(lines.join(u'\n').trimmed());
     lines.clear();
     if (text.isEmpty())
         return;
@@ -117,6 +197,8 @@ QString toSpeech(const QString &text)
         }
         out += m.value(u"text"_s).toString() + u'\n';
     }
+    // split() showed HTML tags as text; say them as they were written.
+    out.replace(u"&lt;"_s, u"<"_s);
     static const QRegularExpression image(u"!\\[([^\\]]*)\\]\\([^)]*\\)"_s);
     out.replace(image, u"\\1"_s);
     static const QRegularExpression link(u"\\[([^\\]]+)\\]\\([^)]*\\)"_s);

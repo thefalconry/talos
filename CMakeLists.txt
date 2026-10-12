@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(Talos
-    VERSION 0.1.3
+    VERSION 0.2.0
     DESCRIPTION "Talos, a desktop and mobile client for the Talon agent"
     LANGUAGES C CXX)
 
@@ -40,6 +40,7 @@ qt_add_library(talos_core STATIC
     src/core/MediaStore.h src/core/MediaStore.cpp
     src/core/BridgeLinks.h src/core/BridgeLinks.cpp
     src/core/AppLog.h src/core/AppLog.cpp
+    src/core/Files.h src/core/Files.cpp
     src/core/Crypto.h src/core/Crypto.cpp
     src/mesh/DeviceExec.h src/mesh/DeviceExec.cpp
     src/mesh/MeshService.h src/mesh/MeshService.cpp
@@ -83,6 +84,7 @@ qt_add_executable(talos
     src/app/Desktop.h src/app/Desktop.cpp
     src/app/CodeHighlighter.h src/app/CodeHighlighter.cpp
     src/app/IconItem.h src/app/IconItem.cpp
+    src/app/NoNetwork.h src/app/NoNetwork.cpp
 )
 
 set(TALON_QML_SINGLETONS qml/Theme.qml)
@@ -154,7 +156,7 @@ set_target_properties(talos PROPERTIES
     QT_ANDROID_PACKAGE_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/android
     QT_ANDROID_PACKAGE_NAME dev.talos.client
     QT_ANDROID_VERSION_NAME ${PROJECT_VERSION}
-    QT_ANDROID_VERSION_CODE 4
+    QT_ANDROID_VERSION_CODE 5
     QT_ANDROID_TARGET_SDK_VERSION 35
     QT_ANDROID_MIN_SDK_VERSION 28
 )

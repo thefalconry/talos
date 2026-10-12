@@ -144,6 +144,7 @@ private:
     QString m_lastError;
     int m_inFlight = 0;
     QQueue<QJsonObject> m_queue;
+    QQueue<QString> m_seenCommands;
     int m_auditRevision = 0;
     QLockFile m_lock;
     bool m_owner = false;

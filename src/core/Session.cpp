@@ -397,7 +397,7 @@ void Session::connectTo(const Profile &endpoint, int epoch, bool persistPin)
             if (epoch == m_epoch && client == m_client)
                 onStreamOpen(epoch, persistPin);
         });
-        connect(client, &BridgeClient::event, this, &Session::onEvent);
+        connect(client, &BridgeClient::eventReceived, this, &Session::onEvent);
         connect(client, &BridgeClient::eventsClosed, this, [this, client](const ApiResult &why) {
             if (client == m_client)
                 onStreamClosed(why);

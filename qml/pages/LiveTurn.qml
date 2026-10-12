@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 import QtQuick
 import QtQuick.Controls.Basic as C
-import QtQuick.Layouts
 import Talos.Native
 
 // The turn in progress, shown under the last message: the model's

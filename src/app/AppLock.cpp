@@ -251,6 +251,11 @@ void AppLock::change(const QString &current, const QString &next, QJSValue done)
         record.salt = crypto::randomBytes(crypto::kSaltBytes);
         const QByteArray dataKey = *key;
         derive(next, record, [this, record, dataKey, done](const QByteArray &fresh) mutable {
+            // Wrapping under nothing would leave a lock no passcode opens.
+            if (fresh.isEmpty()) {
+                reply(done, false, u"Couldn't change the passcode on this device."_s);
+                return;
+            }
             record.wrapped = crypto::seal(fresh, dataKey, "talos-applock-v1");
             m_record = record;
             m_dataKey = dataKey;
