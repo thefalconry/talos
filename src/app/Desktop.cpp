@@ -21,6 +21,10 @@
 #if defined(TALOS_HAVE_DBUS)
 #  include <QDBusConnection>
 #  include <QDBusInterface>
+#  include <QDBusMessage>
+#  include <QDBusPendingCallWatcher>
+#  include <QDBusPendingReply>
+#  include <QDBusReply>
 #endif
 #if defined(TALOS_HAVE_MULTIMEDIA)
 #  include <QSoundEffect>
@@ -112,6 +116,8 @@ void Desktop::setTrayTooltip(const QString &tooltip)
 
 void Desktop::notify(const QString &title, const QString &body)
 {
+    if (m_muted)
+        return;
     if (platform::notifyNative(title, body))
         return;
 #if defined(TALOS_HAVE_DBUS)
@@ -129,8 +135,85 @@ void Desktop::notify(const QString &title, const QString &body)
         m_tray->showMessage(title, body, appIcon(), 8000);
 }
 
+void Desktop::notifyChat(const QString &chatId, const QString &title, const QString &body,
+                         bool canReply)
+{
+    if (m_muted)
+        return;
+#if defined(TALOS_HAVE_DBUS)
+    if (!platform::isMobile()) {
+        const QString service = u"org.freedesktop.Notifications"_s;
+        const QString path = u"/org/freedesktop/Notifications"_s;
+        QDBusConnection bus = QDBusConnection::sessionBus();
+        if (!m_notifyWired) {
+            m_notifyWired = true;
+            QDBusInterface probe(service, path, service, bus);
+            const QDBusReply<QStringList> caps = probe.call(u"GetCapabilities"_s);
+            if (caps.isValid())
+                m_notifyCapabilities = caps.value();
+            bus.connect(service, path, service, u"ActionInvoked"_s, this,
+                        SLOT(onNotificationAction(uint, QString)));
+            bus.connect(service, path, service, u"NotificationReplied"_s, this,
+                        SLOT(onNotificationReply(uint, QString)));
+            bus.connect(service, path, service, u"NotificationClosed"_s, this,
+                        SLOT(onNotificationClosed(uint, uint)));
+        }
+        if (m_notifyCapabilities.contains(u"actions"_s)) {
+            QStringList actions{u"default"_s, u"Open"_s};
+            QVariantMap hints{{u"desktop-entry"_s, u"dev.talos.client"_s}};
+            if (canReply && m_notifyCapabilities.contains(u"inline-reply"_s)) {
+                actions << u"inline-reply"_s << u"Reply"_s;
+                hints[u"x-kde-reply-placeholder-text"_s] = u"Reply to Talon"_s;
+            }
+            // Where the body is read as markup, a reply's own angle
+            // brackets must arrive as text.
+            const QString shown = m_notifyCapabilities.contains(u"body-markup"_s)
+                ? body.toHtmlEscaped() : body;
+            QDBusMessage call = QDBusMessage::createMethodCall(service, path, service, u"Notify"_s);
+            call.setArguments({u"Talos"_s, uint(0), u"dev.talos.client"_s, title, shown, actions,
+                               hints, 12'000});
+            auto *watcher = new QDBusPendingCallWatcher(bus.asyncCall(call), this);
+            connect(watcher, &QDBusPendingCallWatcher::finished, this,
+                    [this, chatId](QDBusPendingCallWatcher *w) {
+                const QDBusPendingReply<uint> reply = *w;
+                w->deleteLater();
+                if (!reply.isError())
+                    m_notified.insert(reply.value(), chatId);
+            });
+            return;
+        }
+    }
+#else
+    Q_UNUSED(chatId);
+    Q_UNUSED(canReply);
+#endif
+    notify(title, body);
+}
+
+void Desktop::onNotificationAction(uint id, const QString &action)
+{
+    const QString chatId = m_notified.value(id);
+    if (!chatId.isEmpty() && action != "inline-reply"_L1)
+        emit openChatRequested(chatId);
+}
+
+void Desktop::onNotificationReply(uint id, const QString &text)
+{
+    const QString chatId = m_notified.value(id);
+    if (!chatId.isEmpty() && !text.trimmed().isEmpty())
+        emit replyRequested(chatId, text);
+}
+
+void Desktop::onNotificationClosed(uint id, uint)
+{
+    // The reply signal comes just before this one, so nothing is lost.
+    m_notified.remove(id);
+}
+
 void Desktop::ring(const QString &message)
 {
+    if (m_muted)
+        return;
     notify(u"Talon is looking for this device"_s,
            message.isEmpty() ? u"Someone asked Talon to ring it."_s : message);
     if (platform::ringNative())

@@ -68,6 +68,24 @@ Pane {
             }
         }
         SettingRow {
+            visible: !App.mobile
+            title: qsTr("Quick-ask shortcut")
+            subtitle: !App.shortcut.available
+                      ? qsTr("This desktop has no shortcut service for apps. Bind a key to “talos --quick” in its own shortcut settings instead.")
+                      : App.shortcut.state === "bound"
+                        ? (App.shortcut.trigger !== ""
+                           ? qsTr("%1 opens a small window for one question, from anywhere.").arg(App.shortcut.trigger)
+                           : qsTr("Bound. The keys are shown, and can be changed, in your desktop's shortcut settings."))
+                        : App.shortcut.state === "failed" ? App.shortcut.error
+                        : App.shortcut.state === "binding" ? qsTr("Waiting for your desktop…")
+                        : qsTr("A system-wide key that opens a small window for one question. Your desktop asks which keys to use.")
+            TSwitch {
+                enabled: App.shortcut.available
+                checked: App.prefs.quickShortcut
+                onToggled: App.prefs.quickShortcut = checked
+            }
+        }
+        SettingRow {
             enabled: App.desktop.autostartSupported
             title: qsTr("Open when I sign in")
             subtitle: App.prefs.closeToTray ? qsTr("Starts hidden in the tray.") : ""

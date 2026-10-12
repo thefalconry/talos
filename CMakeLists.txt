@@ -88,6 +88,7 @@ qt_add_executable(talos
     src/app/IconItem.h src/app/IconItem.cpp
     src/app/NoNetwork.h src/app/NoNetwork.cpp
     src/app/FlowChartItem.h src/app/FlowChartItem.cpp
+    src/app/GlobalShortcut.h src/app/GlobalShortcut.cpp
 )
 
 set(TALON_QML_SINGLETONS qml/Theme.qml)

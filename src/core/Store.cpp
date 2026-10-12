@@ -57,6 +57,7 @@ QVariantMap defaultPrefs()
         // Desktop
         {u"closeToTray"_s, false},
         {u"autostart"_s, false},
+        {u"quickShortcut"_s, false},        // a system-wide key opens the quick-ask window
         {u"screenPrivacy"_s, false},
         {u"windowWidth"_s, 1180},
         {u"windowHeight"_s, 780},

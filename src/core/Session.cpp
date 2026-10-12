@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include "core/Session.h"
 
+#include "core/Markdown.h"
+
 #include "core/AppLog.h"
 
 #include <QClipboard>
@@ -1707,7 +1709,64 @@ QVariantList Session::chatSummaries() const
 
 void Session::send(const QString &text, const QVariantList &attachments, QJSValue done)
 {
-    const QString chatId = m_selected;
+    post(m_selected, text, attachments, done);
+}
+
+void Session::sendTo(const QString &chatId, const QString &text)
+{
+    post(chatId, text, {}, {});
+}
+
+void Session::askInNewChat(const QString &text)
+{
+    const QString question = text.trimmed();
+    if (question.isEmpty())
+        return;
+    if (!m_client || m_conn != Connected) {
+        emit notice(u"Not connected to Talon"_s);
+        return;
+    }
+    for (const QString &id : std::as_const(m_unusedChats)) {
+        if (m_chats.find(id)) {
+            selectChat(id);
+            post(id, question, {}, {});
+            return;
+        }
+    }
+    const int epoch = m_epoch;
+    m_client->post(u"/chats"_s, {}, [this, epoch, question](const ApiResult &r) {
+        const Chat c = Chat::fromJson(r.json["chat"_L1].toObject());
+        if (epoch != m_epoch || !r.ok() || c.id.isEmpty()) {
+            if (epoch == m_epoch)
+                emit notice(u"Couldn't start a chat: %1"_s.arg(r.error));
+            return;
+        }
+        m_store->setLastRead(c.id, qMax<qint64>(1, c.lastActive));
+        m_chats.upsert(c);
+        data(c.id).loaded = true;
+        data(c.id).exhausted = true;
+        selectChat(c.id);
+        post(c.id, question, {}, {});
+    });
+}
+
+QVariantMap Session::lastMessage() const
+{
+    const auto it = m_data.find(m_selected);
+    if (it == m_data.end() || it->second.messages.isEmpty())
+        return {};
+    const Message &m = it->second.messages.last();
+    return {
+        {u"role"_s, m.role == Message::User ? u"user"_s
+                    : m.role == Message::System ? u"system"_s : u"assistant"_s},
+        {u"text"_s, m.text},
+        {u"blocks"_s, markdown::split(m.text)},
+    };
+}
+
+void Session::post(const QString &chatId, const QString &text, const QVariantList &attachments,
+                   QJSValue done)
+{
     const QString body = text.trimmed();
     if (chatId.isEmpty() || (body.isEmpty() && attachments.isEmpty())) {
         reply(done, false);

@@ -150,6 +150,13 @@ public:
     /// Send to the open chat. @p attachments are records from uploads. The
     /// callback gets `true` once the daemon accepted it.
     Q_INVOKABLE void send(const QString &text, const QVariantList &attachments, QJSValue done);
+    /// Send text to a chat that need not be the open one (a reply typed
+    /// into a notification).
+    Q_INVOKABLE void sendTo(const QString &chatId, const QString &text);
+    /// Open a fresh chat and put a question to it.
+    Q_INVOKABLE void askInNewChat(const QString &text);
+    /// The open chat's newest message, as `{role, text, blocks}`.
+    Q_INVOKABLE QVariantMap lastMessage() const;
     Q_INVOKABLE void interrupt();
     /// Replace or (with empty text) clear the open chat's queued follow-up.
     Q_INVOKABLE void editQueued(const QString &text);
@@ -187,6 +194,8 @@ public:
     /// Carry out one of the client's own slash commands. False when the
     /// text isn't one, and should be sent as a message.
     bool runBuiltInCommand(const QString &chatId, const QString &text);
+    void post(const QString &chatId, const QString &text, const QVariantList &attachments,
+              QJSValue done);
 
 signals:
     void connChanged();

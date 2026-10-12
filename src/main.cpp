@@ -207,10 +207,14 @@ int main(int argc, char *argv[])
                                     u"file"_s);
     parser.addOption(hidden);
     parser.addOption(headless);
+    const QCommandLineOption quick(u"quick"_s,
+                                   u"Open the small quick-ask window (bind this to a key)."_s);
+    parser.addOption(quick);
     parser.addOption(script);
     parser.addPositionalArgument(u"link"_s, u"A talon://pair link to open."_s, u"[link]"_s);
     parser.process(qapp);
-    const QString link = parser.positionalArguments().value(0);
+    const QString link = parser.isSet(quick) ? u"talos:quick"_s
+                                             : parser.positionalArguments().value(0);
 
 #if !defined(Q_OS_ANDROID) && !defined(Q_OS_IOS)
     QLocalServer instance;
@@ -266,8 +270,10 @@ int main(int argc, char *argv[])
     app.session()->start();
     if (!link.isEmpty())
         QTimer::singleShot(0, &app, [&app, link] { app.handleExternalLink(link); });
-    if (parser.isSet(script))
+    if (parser.isSet(script)) {
+        app.desktop()->setMuted(true);
         runScript(parser.value(script), &engine, &app);
+    }
 
     const int rc = qapp.exec();
     QDesktopServices::unsetUrlHandler(u"talon"_s);

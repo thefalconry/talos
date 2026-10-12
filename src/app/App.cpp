@@ -23,6 +23,7 @@
 #include <QSaveFile>
 #include <QSslSocket>
 #include <QStyleHints>
+#include <QTimer>
 #include <QUrlQuery>
 
 namespace talos {
@@ -140,6 +141,21 @@ App::App(QObject *parent)
 
     connect(&m_desktop, &Desktop::activateRequested, this, &App::showWindow);
     connect(&m_desktop, &Desktop::quitRequested, this, &App::quit);
+    connect(&m_shortcut, &GlobalShortcut::activated, this, &App::quickAskRequested);
+    // The desktop remembers the keys; asking again at start is how a
+    // session gets them back.
+    if (m_store.prefBool(u"quickShortcut"_s))
+        QTimer::singleShot(0, &m_shortcut, &GlobalShortcut::bind);
+    connect(&m_desktop, &Desktop::openChatRequested, this, [this](const QString &chatId) {
+        showWindow();
+        if (!m_lock.locked())
+            emit openChatRequested(chatId);
+    });
+    connect(&m_desktop, &Desktop::replyRequested, this,
+            [this](const QString &chatId, const QString &text) {
+        if (!m_lock.locked())
+            m_session.sendTo(chatId, text);
+    });
     connect(&m_desktop, &Desktop::newChatRequested, this, [this] {
         showWindow();
         m_session.newChat();
@@ -152,6 +168,8 @@ App::App(QObject *parent)
             platform::setSecureWindow(m_store.prefBool(key));
         else if (key == "meshSharing"_L1 || key == "meshBackground"_L1)
             updateKeepAlive();
+        else if (key == "quickShortcut"_L1)
+            m_store.prefBool(key) ? m_shortcut.bind() : m_shortcut.release();
         // Whether credentials may stay sealed depends on these two.
         if (key == "meshService"_L1 || key == "meshBackground"_L1)
             m_store.resealSecrets();
@@ -293,8 +311,13 @@ void App::onMessage(const QString &chatId, const QString &title, const QString &
     QString body = text.simplified();
     if (body.size() > 180)
         body = body.left(179) + u'…';
-    m_desktop.notify(title.isEmpty() ? m_session.botName() : title,
-                     preview && !body.isEmpty() ? body : u"New message"_s);
+    // Locked, a notification is neither a way in nor a way to answer.
+    if (m_lock.locked()) {
+        m_desktop.notify(title.isEmpty() ? m_session.botName() : title, u"New message"_s);
+        return;
+    }
+    m_desktop.notifyChat(chatId, title.isEmpty() ? m_session.botName() : title,
+                         preview && !body.isEmpty() ? body : u"New message"_s, true);
 }
 
 // ── Connection profiles ─────────────────────────────────────────────────────
@@ -602,6 +625,11 @@ void App::forgetEverything()
 
 void App::handleExternalLink(const QString &link)
 {
+    // `talos --quick` from a second launch: the small window, not the big one.
+    if (link == "talos:quick"_L1) {
+        emit quickAskRequested();
+        return;
+    }
     showWindow();
     if (!findPairLink(link).isEmpty())
         emit pairLinkReceived(findPairLink(link));

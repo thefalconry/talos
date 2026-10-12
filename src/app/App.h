@@ -3,6 +3,7 @@
 
 #include "app/AppLock.h"
 #include "app/Desktop.h"
+#include "app/GlobalShortcut.h"
 #include "mesh/ScreenControl.h"
 #include "app/Updater.h"
 #include "app/Voice.h"
@@ -42,6 +43,7 @@ class App : public QObject
     Q_PROPERTY(talos::Voice *voice READ voice CONSTANT)
     Q_PROPERTY(talos::Desktop *desktop READ desktop CONSTANT)
     Q_PROPERTY(talos::ScreenControl *screen READ screen CONSTANT)
+    Q_PROPERTY(talos::GlobalShortcut *shortcut READ shortcut CONSTANT)
     Q_PROPERTY(bool serviceSupported READ serviceSupported CONSTANT)
     Q_PROPERTY(QString serviceState READ serviceState NOTIFY serviceChanged)
     Q_PROPERTY(bool serviceLingering READ serviceLingering NOTIFY serviceChanged)
@@ -73,6 +75,7 @@ public:
     Voice *voice() { return &m_voice; }
     Desktop *desktop() { return &m_desktop; }
     ScreenControl *screen() { return &m_screen; }
+    GlobalShortcut *shortcut() { return &m_shortcut; }
     bool serviceSupported() const;
     QString serviceState() const;
     bool serviceLingering() const;
@@ -147,6 +150,10 @@ signals:
     /// A pairing link arrived from outside the app.
     void pairLinkReceived(const QString &link);
     void toast(const QString &text);
+    /// A notification was clicked.
+    void openChatRequested(const QString &chatId);
+    /// The quick-ask window was called for (shortcut, or `talos --quick`).
+    void quickAskRequested();
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -171,6 +178,7 @@ private:
     Voice m_voice;
     Desktop m_desktop;
     ScreenControl m_screen;
+    GlobalShortcut m_shortcut;
 
     QQmlEngine *m_engine = nullptr;
     QQuickWindow *m_window = nullptr;

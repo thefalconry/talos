@@ -172,10 +172,23 @@ C.ApplicationWindow {
         target: App.session
         function onModelPickerRequested() { root.openModelPicker() }
     }
+    // The small one-question window; never on a phone.
+    Loader {
+        id: quickAsk
+        active: !App.mobile
+        sourceComponent: QuickAsk { main: root }
+    }
     Connections {
         target: App
         function onToast(text) { root.toast(text) }
         function onPairLinkReceived(link) { pairSheet.offer(link) }
+        function onOpenChatRequested(chatId) { root.openChat(chatId) }
+        function onQuickAskRequested() {
+            if (quickAsk.item)
+                quickAsk.item.present()
+            else
+                App.showWindow()
+        }
     }
 
     // ── Layout ──────────────────────────────────────────────────────────────
