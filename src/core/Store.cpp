@@ -533,6 +533,13 @@ void Store::invalidateSecrets()
     m_activeCache.reset();
 }
 
+bool Store::lockConfigured() const
+{
+    bool found = false;
+    SecretStore::instance().read(u"applock"_s, &found);
+    return found;
+}
+
 bool Store::secretsLocked() const
 {
     if (!hasProfile())

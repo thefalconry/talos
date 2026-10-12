@@ -168,9 +168,17 @@ C.ApplicationWindow {
             App.session.send(text, [], function (ok) { })
     }
 
+    property var pendingShare: null
     Connections {
         target: App.session
         function onModelPickerRequested() { root.openModelPicker() }
+        function onSelectionChanged() {
+            if (root.pendingShare && App.session.selectedChatId !== "") {
+                const share = root.pendingShare
+                root.pendingShare = null
+                chatPage.acceptShare(share.text, share.files)
+            }
+        }
     }
     // The small one-question window; never on a phone.
     Loader {
@@ -183,6 +191,15 @@ C.ApplicationWindow {
         function onToast(text) { root.toast(text) }
         function onPairLinkReceived(link) { pairSheet.offer(link) }
         function onOpenChatRequested(chatId) { root.openChat(chatId) }
+        function onSharedReceived(text, files) {
+            // Into the chat that is open, or a new one.
+            if (App.session.selectedChatId !== "") {
+                chatPage.acceptShare(text, files)
+                return
+            }
+            root.pendingShare = { text: text, files: files }
+            root.newChat()
+        }
         function onQuickAskRequested() {
             if (quickAsk.item)
                 quickAsk.item.present()

@@ -9,6 +9,9 @@
 #include "mesh/ServiceInstall.h"
 
 #include <QApplication>
+#if defined(Q_OS_ANDROID)
+#  include <QtCore/private/qandroidextras_p.h>
+#endif
 #include <QCommandLineParser>
 #include <QCryptographicHash>
 #include <QDesktopServices>
@@ -127,7 +130,12 @@ void runScript(const QString &file, QQmlApplicationEngine *engine, talos::App *a
 /// service has none: they run on a plain event loop.
 int runWithoutDisplay(int argc, char *argv[], bool serviceCommand)
 {
+#if defined(Q_OS_ANDROID)
+    // Started by MeshHost: the same event loop, tied to the service's life.
+    QAndroidService core(argc, argv);
+#else
     QCoreApplication core(argc, argv);
+#endif
     QCoreApplication::setOrganizationName(u"Talos"_s);
     QCoreApplication::setApplicationName(u"talos"_s);
     QCoreApplication::setApplicationVersion(QStringLiteral(TALOS_VERSION));

@@ -222,16 +222,16 @@ QVariantList split(const QString &text)
                 continue;
             }
             bool handled = false;
-            for (const auto &[open, close] : {std::pair{u"$$"_s, u"$$"_s},
+            for (const auto &[opener, closer] : {std::pair{u"$$"_s, u"$$"_s},
                                               std::pair{u"\\["_s, u"\\]"_s}}) {
-                if (!t.startsWith(open))
+                if (!t.startsWith(opener))
                     continue;
-                const QStringView rest = t.sliced(open.size());
-                if (!rest.isEmpty() && rest.endsWith(close)) {
-                    pushMath(rest.chopped(close.size()).toString());
+                const QStringView rest = t.sliced(opener.size());
+                if (!rest.isEmpty() && rest.endsWith(closer)) {
+                    pushMath(rest.chopped(closer.size()).toString());
                 } else {
                     inMath = true;
-                    mathClose = close;
+                    mathClose = closer;
                     math << rest.toString();
                 }
                 handled = true;

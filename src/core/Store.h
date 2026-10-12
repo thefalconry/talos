@@ -115,6 +115,8 @@ public:
     /// True when the active profile's credentials are sealed and nothing
     /// here can open them yet: the app has not been unlocked since it began.
     bool secretsLocked() const;
+    /// True when an app lock exists, whether or not this process holds it.
+    bool lockConfigured() const;
     /// Rewrite every profile's credentials the way the current settings
     /// want them (sealed or not). Ones that can't be opened are left alone.
     void resealSecrets();

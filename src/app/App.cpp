@@ -11,6 +11,9 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QImage>
 #include <QLocale>
 #include <QMimeData>
@@ -143,6 +146,11 @@ App::App(QObject *parent)
     connect(&m_desktop, &Desktop::quitRequested, this, &App::quit);
     // Before any of the interface is built.
     applyLanguage();
+    m_uiBeat.setInterval(10'000);
+    connect(&m_uiBeat, &QTimer::timeout, this,
+            [this] { platform::markUiActive(m_store.dataDir(), true); });
+    if (mobile() && m_store.prefBool(u"notifications"_s))
+        QTimer::singleShot(1500, this, [] { platform::askForNotifications(); });
     connect(&m_shortcut, &GlobalShortcut::activated, this, &App::quickAskRequested);
     // The desktop remembers the keys; asking again at start is how a
     // session gets them back.
@@ -192,12 +200,17 @@ App::App(QObject *parent)
             m_active = active;
             emit activeChanged();
         }
+        if (mobile()) {
+            platform::markUiActive(m_store.dataDir(), active);
+            active ? m_uiBeat.start() : m_uiBeat.stop();
+        }
         if (active) {
             m_lock.setAppActive(true);
             m_session.resume();
             // Android only lets the service start while the app is in
             // front, so this is where a start that was refused is retried.
             updateKeepAlive();
+            takeShared();
         } else if (state == Qt::ApplicationHidden || state == Qt::ApplicationSuspended) {
             // Losing focus on a desktop is not "away"; being put in the
             // background on a phone is.
@@ -309,6 +322,10 @@ void App::onMessage(const QString &chatId, const QString &title, const QString &
         return;
     }
     if (!m_store.prefBool(u"notifications"_s))
+        return;
+    // On a phone with the background connection on, that service is what
+    // announces replies; two processes would otherwise each say it once.
+    if (mobile() && m_store.prefBool(u"meshSharing"_s) && m_store.prefBool(u"meshBackground"_s))
         return;
     // Behind the lock a notification says that something arrived, never what.
     const bool preview = m_store.prefBool(u"notifyPreview"_s) && !m_lock.locked();
@@ -764,9 +781,20 @@ void App::applyLanguage()
 
 void App::updateKeepAlive()
 {
-    platform::setKeepAlive(m_store.prefBool(u"meshSharing"_s) && m_store.prefBool(u"meshBackground"_s),
-                           u"Staying reachable on the mesh"_s);
+    platform::setKeepAlive(m_store.prefBool(u"meshSharing"_s) && m_store.prefBool(u"meshBackground"_s));
 }
+
+void App::takeShared()
+{
+    const QJsonObject share = QJsonDocument::fromJson(platform::takeShared().toUtf8()).object();
+    QVariantList files;
+    for (const QJsonValue v : share["files"_L1].toArray())
+        files << QUrl(v.toString());
+    const QString text = share["text"_L1].toString();
+    if (!text.isEmpty() || !files.isEmpty())
+        emit sharedReceived(text, files);
+}
+
 
 QUrl App::suggestedFile(const QString &title, const QString &suffix) const
 {

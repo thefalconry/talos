@@ -32,9 +32,18 @@ void setSecureWindow(bool on);
 /// gesture leaves an app on a phone (Android). False where there is no such
 /// thing and the caller should close the window instead.
 bool moveToBackground();
-/// Keep the process alive behind a visible notification while the window
-/// is closed, or stop doing so (Android). A no-op elsewhere.
-void setKeepAlive(bool on, const QString &text);
+/// Run the connection in a background service that outlives the window and
+/// starts again at boot, or stop it (Android). A no-op elsewhere.
+void setKeepAlive(bool on);
+/// What another app shared to this one since the last call, as
+/// `{"text": …, "files": [content URIs]}` JSON; empty when nothing (Android).
+QString takeShared();
+/// Ask for permission to post notifications where the system requires it.
+void askForNotifications();
+/// The window's process says whether it is in front, so the background
+/// service knows when a notification would only repeat what is on screen.
+void markUiActive(const QString &dataDir, bool active);
+bool uiActive(const QString &dataDir);
 /// Hand an APK to the system installer, which asks the person holding the
 /// device (Android). Empty when it was handed over, otherwise the reason.
 QString installPackage(const QString &path);

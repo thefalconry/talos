@@ -32,7 +32,7 @@ Pane {
         SettingRow {
             visible: App.prefs.meshSharing && App.platform === "android"
             title: qsTr("Stay reachable with the app closed")
-            subtitle: qsTr("Keeps the connection up while Talos is in the background, behind a notification that stays visible. It ends when Talos is swiped out of recent apps.")
+            subtitle: qsTr("Runs the connection as a background service, behind a notification that stays visible. It goes on after Talos is closed, starts again when the phone restarts, and tells you about replies.")
             TSwitch {
                 checked: App.prefs.meshBackground
                 onToggled: App.prefs.meshBackground = checked

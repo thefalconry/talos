@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(Talos
-    VERSION 0.2.0
+    VERSION 0.3.0
     DESCRIPTION "Talos, a desktop and mobile client for the Talon agent"
     LANGUAGES C CXX)
 
@@ -172,7 +172,7 @@ set_target_properties(talos PROPERTIES
     QT_ANDROID_PACKAGE_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/android
     QT_ANDROID_PACKAGE_NAME dev.talos.client
     QT_ANDROID_VERSION_NAME ${PROJECT_VERSION}
-    QT_ANDROID_VERSION_CODE 5
+    QT_ANDROID_VERSION_CODE 6
     QT_ANDROID_TARGET_SDK_VERSION 35
     QT_ANDROID_MIN_SDK_VERSION 28
 )

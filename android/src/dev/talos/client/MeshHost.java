@@ -5,57 +5,67 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
-import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
-import android.os.IBinder;
+
+import org.qtproject.qt.android.bindings.QtService;
 
 /**
- * Keeps the app's process in the foreground class while the mesh is on, so
- * Android doesn't freeze its connection the moment the window is left.
+ * The connection to Talon, running without the app's window.
  *
- * It runs no code of its own: the connection lives in the app's process and
- * this only tells the system, with a notification the user can see, that the
- * process is still doing something for them. It does not survive the app
- * being swiped out of the recent-apps list, because that ends the process.
+ * It is the same program started with `--headless`, in a process of its own
+ * (see the manifest), so it goes on after the window is closed or swiped
+ * away and can be started when the phone boots. Android requires a service
+ * like this to show a notification for as long as it runs.
  */
-public class MeshKeepAlive extends Service {
+public class MeshHost extends QtService {
     private static final String CHANNEL = "talos.mesh";
     private static final int NOTIFICATION = 7001;
+    private static final String PREFS = "talos";
+    private static final String WANTED = "mesh_background";
 
-    /** Start or stop the service; called from the app's own process. */
-    public static void set(Context context, boolean on, String text) {
-        Intent intent = new Intent(context, MeshKeepAlive.class);
+    /** Whether the user asked for the background connection. */
+    public static boolean wanted(Context context) {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(WANTED, false);
+    }
+
+    /** Turn the background connection on or off; called from the app. */
+    public static void set(Context context, boolean on) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        prefs.edit().putBoolean(WANTED, on).apply();
+        Intent intent = new Intent(context, MeshHost.class);
         if (!on) {
             context.stopService(intent);
             return;
         }
-        intent.putExtra("text", text);
+        start(context);
+    }
+
+    static void start(Context context) {
         try {
-            context.startForegroundService(intent);
+            context.startForegroundService(new Intent(context, MeshHost.class));
         } catch (RuntimeException e) {
-            // Refused when the app is not in the foreground itself; the next
-            // time the window is opened it is asked for again.
+            // Not allowed right now (the app isn't in front); it is asked
+            // for again the next time the window opens.
         }
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        String text = intent != null ? intent.getStringExtra("text") : null;
         NotificationManager manager =
             (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         manager.createNotificationChannel(new NotificationChannel(
-            CHANNEL, "Mesh connection", NotificationManager.IMPORTANCE_LOW));
-
+            CHANNEL, "Background connection", NotificationManager.IMPORTANCE_LOW));
         Intent open = getPackageManager().getLaunchIntentForPackage(getPackageName());
         PendingIntent tap = open == null ? null : PendingIntent.getActivity(
             this, 0, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         Notification notification = new Notification.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_notify_sync_noanim)
             .setContentTitle("Talos")
-            .setContentText(text == null || text.isEmpty() ? "Connected to the mesh" : text)
+            .setContentText("Connected to Talon in the background")
             .setContentIntent(tap)
             .setOngoing(true)
             .build();
@@ -70,13 +80,8 @@ public class MeshKeepAlive extends Service {
             stopSelf();
             return START_NOT_STICKY;
         }
-        // Not restarted on its own: with the process gone there is no
-        // connection for it to keep.
-        return START_NOT_STICKY;
-    }
-
-    @Override
-    public IBinder onBind(Intent intent) {
-        return null;
+        super.onStartCommand(intent, flags, startId);
+        // Brought back if the system has to reclaim the process.
+        return START_STICKY;
     }
 }

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include "mesh/Platform.h"
 
+#include <QFileInfo>
+
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -196,20 +198,66 @@ void setSecureWindow(bool on)
 #endif
 }
 
-void setKeepAlive(bool on, const QString &text)
+void setKeepAlive(bool on)
 {
 #if defined(Q_OS_ANDROID)
-    QNativeInterface::QAndroidApplication::runOnAndroidMainThread([on, text] {
+    QNativeInterface::QAndroidApplication::runOnAndroidMainThread([on] {
         const QJniObject context = QNativeInterface::QAndroidApplication::context();
-        QJniObject::callStaticMethod<void>(
-            "dev/talos/client/MeshKeepAlive", "set",
-            "(Landroid/content/Context;ZLjava/lang/String;)V", context.object(), jboolean(on),
-            QJniObject::fromString(text).object<jstring>());
+        QJniObject::callStaticMethod<void>("dev/talos/client/MeshHost", "set",
+                                           "(Landroid/content/Context;Z)V", context.object(),
+                                           jboolean(on));
     });
 #else
     Q_UNUSED(on);
-    Q_UNUSED(text);
 #endif
+}
+
+QString takeShared()
+{
+#if defined(Q_OS_ANDROID)
+    const QJniObject share = QJniObject::callStaticObjectMethod(
+        "dev/talos/client/TalosActivity", "takeShared", "()Ljava/lang/String;");
+    return share.isValid() ? share.toString() : QString();
+#else
+    return {};
+#endif
+}
+
+void askForNotifications()
+{
+#if defined(Q_OS_ANDROID)
+    QNativeInterface::QAndroidApplication::runOnAndroidMainThread([] {
+        const QJniObject activity = QNativeInterface::QAndroidApplication::context();
+        QJniObject::callStaticMethod<void>("dev/talos/client/TalosActivity", "askForNotifications",
+                                           "(Landroid/app/Activity;)V", activity.object());
+    });
+#endif
+}
+
+namespace {
+QString uiMarker(const QString &dataDir)
+{
+    return QDir(dataDir).filePath(u"ui.active"_s);
+}
+} // namespace
+
+void markUiActive(const QString &dataDir, bool active)
+{
+    if (!active) {
+        QFile::remove(uiMarker(dataDir));
+        return;
+    }
+    QFile marker(uiMarker(dataDir));
+    if (marker.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        marker.write(QByteArray::number(QDateTime::currentMSecsSinceEpoch()));
+}
+
+bool uiActive(const QString &dataDir)
+{
+    // Refreshed every few seconds while the window is in front; a stale one
+    // is a window that went away without saying so.
+    const QFileInfo marker(uiMarker(dataDir));
+    return marker.exists() && marker.lastModified().secsTo(QDateTime::currentDateTime()) < 30;
 }
 
 QString installPackage(const QString &path)
@@ -262,6 +310,23 @@ bool notifyNative(const QString &title, const QString &body)
                                  QJniObject::fromString(body).object<jstring>());
         builder.callObjectMethod("setAutoCancel", "(Z)Landroid/app/Notification$Builder;",
                                  jboolean(true));
+        // Tapping it opens the app.
+        const QJniObject packages =
+            context.callObjectMethod("getPackageManager", "()Landroid/content/pm/PackageManager;");
+        const QJniObject package = context.callObjectMethod("getPackageName", "()Ljava/lang/String;");
+        const QJniObject open = packages.callObjectMethod(
+            "getLaunchIntentForPackage", "(Ljava/lang/String;)Landroid/content/Intent;",
+            package.object<jstring>());
+        if (open.isValid()) {
+            constexpr jint kImmutableUpdate = 0x04000000 | 0x08000000;
+            const QJniObject tap = QJniObject::callStaticObjectMethod(
+                "android/app/PendingIntent", "getActivity",
+                "(Landroid/content/Context;ILandroid/content/Intent;I)Landroid/app/PendingIntent;",
+                context.object(), jint(0), open.object(), kImmutableUpdate);
+            builder.callObjectMethod(
+                "setContentIntent",
+                "(Landroid/app/PendingIntent;)Landroid/app/Notification$Builder;", tap.object());
+        }
         const QJniObject notification =
             builder.callObjectMethod("build", "()Landroid/app/Notification;");
         manager.callMethod<void>("notify", "(ILandroid/app/Notification;)V", jint(id),

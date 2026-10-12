@@ -16,6 +16,7 @@
 
 #include <QColor>
 #include <QJSValue>
+#include <QTimer>
 #include <QTranslator>
 #include <QObject>
 #include <QUrl>
@@ -157,6 +158,8 @@ signals:
     void openChatRequested(const QString &chatId);
     /// The quick-ask window was called for (shortcut, or `talos --quick`).
     void quickAskRequested();
+    /// Another app shared text or files to this one (Android).
+    void sharedReceived(const QString &text, const QVariantList &files);
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -168,6 +171,8 @@ private:
     void updateTray();
     void updateKeepAlive();
     void applyLanguage();
+    void takeShared();
+    QTimer m_uiBeat;
     QTranslator m_translator;
     /// Set while the lock is being removed, so credentials are written back
     /// unsealed although the lock still exists for a moment.

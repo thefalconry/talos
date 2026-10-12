@@ -1634,8 +1634,8 @@
         <translation>ऐप बंद होने पर भी पहुँच में रहें</translation>
     </message>
     <message>
-        <source>Keeps the connection up while Talos is in the background, behind a notification that stays visible. It ends when Talos is swiped out of recent apps.</source>
-        <translation>Talos के बैकग्राउंड में रहने पर कनेक्शन बनाए रखता है, एक सूचना के साथ जो दिखती रहती है। Talos को हाल के ऐप से हटाने पर यह ख़त्म हो जाता है।</translation>
+        <source>Runs the connection as a background service, behind a notification that stays visible. It goes on after Talos is closed, starts again when the phone restarts, and tells you about replies.</source>
+        <translation>कनेक्शन को बैकग्राउंड सेवा के रूप में चलाता है, एक सूचना के साथ जो दिखती रहती है। यह Talos बंद होने के बाद भी चलता है, फ़ोन रीस्टार्ट होने पर फिर शुरू होता है और जवाबों की सूचना देता है।</translation>
     </message>
     <message>
         <source>Let Talon control this device</source>

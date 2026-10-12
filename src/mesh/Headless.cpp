@@ -5,6 +5,7 @@
 #include "core/Session.h"
 #include "core/Store.h"
 #include "mesh/MeshService.h"
+#include "mesh/Platform.h"
 
 #include <QCoreApplication>
 #include <QFileSystemWatcher>
@@ -28,19 +29,46 @@ void onSignal(int)
 int runHeadless(QCoreApplication &app)
 {
     Store store;
+#if !defined(Q_OS_ANDROID)
     if (!store.hasProfile()) {
         std::fprintf(stderr, "talos: no connection is set up yet. Open the app once and "
                              "connect it to Talon first.\n");
         return 2;
     }
+#endif
     Session session(&store);
     session.setSnapshotsEnabled(false);
     MeshService mesh(&store, &session);
 
     QObject::connect(&mesh, &MeshService::ringRequested, &app, [](const QString &message) {
-        // No speaker to reach from here; the app rings when it is open.
+        // A phone's own ringtone can be played from here; on a desktop
+        // there is no speaker to reach, and the app rings when it is open.
+        if (platform::ringNative()) {
+            platform::notifyNative(u"Talon is looking for this device"_s,
+                                   message.isEmpty() ? u"Someone asked Talon to ring it."_s
+                                                     : message);
+        }
         AppLog::info("mesh", u"ring requested: %1"_s.arg(message));
     });
+#if defined(Q_OS_ANDROID)
+    // With the window closed this process is the one that hears a reply
+    // arrive, so it is the one that says so.
+    QObject::connect(&session, &Session::messageArrived, &app,
+                     [&store, &session](const QString &, const QString &title, const QString &text,
+                                        bool fromAssistant) {
+        if (!fromAssistant || !store.prefBool(u"notifications"_s)
+            || platform::uiActive(store.dataDir()))
+            return;
+        // The app lock's state lives in the window's process; with a lock
+        // set, never show what a reply says.
+        const bool preview = store.prefBool(u"notifyPreview"_s) && !store.lockConfigured();
+        QString body = text.simplified();
+        if (body.size() > 180)
+            body = body.left(179) + u'…';
+        platform::notifyNative(title.isEmpty() ? session.botName() : title,
+                               preview && !body.isEmpty() ? body : u"New message"_s);
+    });
+#endif
     QObject::connect(&mesh, &MeshService::restartRequested, &app, [&app] {
         // The service manager starts the new build.
         AppLog::info("mesh", u"restarting into the updated build"_s);

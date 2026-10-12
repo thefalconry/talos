@@ -24,6 +24,8 @@
          turns that on: a foreground service with a visible notification. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Starting that service again after a reboot, only if it was on. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Mesh install_apk: hands a package to the system installer, which
          asks the user. Only offered with device control turned on. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
@@ -58,7 +60,7 @@
         android:allowBackup="false"
         android:fullBackupOnly="false">
         <activity
-            android:name="org.qtproject.qt.android.bindings.QtActivity"
+            android:name="dev.talos.client.TalosActivity"
             android:configChanges="orientation|uiMode|screenLayout|screenSize|smallestScreenSize|layoutDirection|locale|fontScale|keyboard|keyboardHidden|navigation|mcc|mnc|density"
             android:label="Talos"
             android:launchMode="singleTop"
@@ -68,6 +70,18 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- "Share" from another app: text, or one or more files. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
             </intent-filter>
             <!-- talon://pair links open the app. -->
             <intent-filter>
@@ -86,14 +100,34 @@
                 android:value="-- %%INSERT_APP_ARGUMENTS%% --" />
         </activity>
 
+        <!-- The same program started headless, in its own process, so the
+             connection outlives the window. -->
         <service
-            android:name="dev.talos.client.MeshKeepAlive"
+            android:name="dev.talos.client.MeshHost"
+            android:process=":mesh"
             android:exported="false"
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Keeps this device reachable on the user's own Talon mesh" />
+            <meta-data
+                android:name="android.app.lib_name"
+                android:value="-- %%INSERT_APP_LIB_NAME%% --" />
+            <meta-data
+                android:name="android.app.arguments"
+                android:value="--headless" />
+            <meta-data
+                android:name="android.app.background_running"
+                android:value="true" />
         </service>
+        <receiver
+            android:name="dev.talos.client.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
         <receiver
             android:name="dev.talos.client.ApkInstaller"
             android:exported="false" />

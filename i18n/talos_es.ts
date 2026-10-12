@@ -1634,8 +1634,8 @@
         <translation>Seguir accesible con la app cerrada</translation>
     </message>
     <message>
-        <source>Keeps the connection up while Talos is in the background, behind a notification that stays visible. It ends when Talos is swiped out of recent apps.</source>
-        <translation>Mantiene la conexión mientras Talos está en segundo plano, con una notificación que permanece visible. Termina cuando se quita Talos de las apps recientes.</translation>
+        <source>Runs the connection as a background service, behind a notification that stays visible. It goes on after Talos is closed, starts again when the phone restarts, and tells you about replies.</source>
+        <translation>Mantiene la conexión como servicio en segundo plano, con una notificación que permanece visible. Sigue tras cerrar Talos, se inicia de nuevo al reiniciar el teléfono y te avisa de las respuestas.</translation>
     </message>
     <message>
         <source>Let Talon control this device</source>

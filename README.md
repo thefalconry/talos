@@ -71,6 +71,8 @@ daemon's protocol definition rather than ported from the Flutter companion.
 - Trades the shared bridge token for a per-device credential, and rotates it
   when Talon asks
 - Several saved connections; credentials live in the system keyring
+- With the app lock on, tokens and client certificates are sealed with
+  the passcode as well: after a restart Talos stays offline until unlocked
 - Reconnects on its own: backoff, a dead-stream timeout, network changes,
   resume from sleep, and daemon restarts
 - Fallback addresses: when the daemon advertises other ways to reach it
@@ -78,6 +80,15 @@ daemon's protocol definition rather than ported from the Flutter companion.
   when DNS is down), Talos moves to the next one that answers and returns
   to the saved address once it is back. A fallback is only used if it shows
   the certificate already pinned
+
+**On the desktop**
+
+- A small quick-ask window from anywhere: `talos --quick`, or a system-wide
+  shortcut where the desktop offers apps one (KDE Plasma, GNOME 48+)
+- Notifications open the chat they are about, and on desktops with inline
+  replies you can answer from the notification
+- The interface in English, Spanish and Hindi; screen-reader names and
+  keyboard access on the controls
 
 **Talon itself**
 
@@ -93,8 +104,14 @@ daemon's protocol definition rather than ported from the Flutter companion.
 - With device control granted for that server: `exec`, `read_file`,
   `write_file`, `list_dir`, `stat`, `delete`, `mkdir`, `move`, and streamed
   `upload_file` / `download_file` with SHA-256 checks
+- Device control can be narrowed: shell commands, reading files and
+  changing files each have a switch, and file commands can be confined to
+  folders you list
 - Optional approval prompt before every command, command limits, and an
   audit trail of everything run
+- **Android**: share text or files to Talos from other apps; an optional
+  background service keeps the connection up with the app closed, starts
+  at boot and announces replies
 - **Background service** (Linux): `talos --headless` keeps the device on the
   mesh with the app closed; Settings or `talos service install` sets it up
   as a systemd user unit
@@ -253,10 +270,11 @@ tests/       unit and integration tests, protocol fixtures
   voice mode there reads replies and takes typed turns. There is no
   on-device neural voice (the companion's Kokoro model); the system's
   text-to-speech is used.
-- **Android background mesh.** With "Stay reachable with the app closed"
-  on, a foreground service keeps the connection up while Talos is in the
-  background. It does not survive Talos being swiped out of recent apps,
-  and nothing starts it at boot.
+- **Android background connection.** With "Stay reachable with the app
+  closed" on, the connection runs in a service of its own that goes on
+  after the app is closed and starts again at boot. It has not been run on
+  a device yet. While it is on, tokens are not sealed by the app lock,
+  because the service has to read them unattended.
 - **`install_apk`** (Android) hands the package to the system installer,
   which asks the person holding the phone to confirm. It is never silent:
   that needs root or Shizuku, which Talos does not use, and `exec` likewise
