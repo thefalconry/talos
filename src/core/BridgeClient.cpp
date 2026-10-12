@@ -34,7 +34,9 @@ bool enableLegacyCiphers()
 #if defined(Q_OS_ANDROID)
         QLibrary crypto(u"crypto_3"_s);
 #else
-        QLibrary crypto(u"crypto"_s, 3);
+        // Whichever major version Qt is running: 3 on most systems, but a
+        // Qt built against OpenSSL 4 (Homebrew's) has libcrypto.4 open.
+        QLibrary crypto(u"crypto"_s, int(QSslSocket::sslLibraryVersionNumber() >> 28));
 #endif
         using Load = void *(*)(void *, const char *);
         const auto load = reinterpret_cast<Load>(crypto.resolve("OSSL_PROVIDER_load"));

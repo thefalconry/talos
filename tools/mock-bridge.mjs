@@ -790,17 +790,21 @@ let fingerprint = "";
 let tlsOptions = null;
 if (useTls) {
   const run = (argv) => execFileSync("openssl", argv, { cwd: dir, stdio: "pipe" });
+  // The curve by name: LibreSSL (macOS's openssl) would otherwise spell out
+  // its parameters, and OpenSSL refuses a certificate whose key does that.
+  const ecKey = ["-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1",
+    "-pkeyopt", "ec_param_enc:named_curve", "-nodes"];
   if (!fs.existsSync(path.join(dir, "bridge.crt"))) {
-    run(["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes",
+    run(["req", "-x509", ...ecKey,
       "-keyout", "bridge.key", "-out", "bridge.crt", "-days", "30", "-subj", "/CN=talon-mock-bridge"]);
   }
   tlsOptions = { key: fs.readFileSync(path.join(dir, "bridge.key")), cert: fs.readFileSync(path.join(dir, "bridge.crt")) };
   fingerprint = new X509Certificate(tlsOptions.cert).fingerprint256.replace(/:/g, "").toLowerCase();
   if (useMtls) {
     if (!fs.existsSync(path.join(dir, "client.p12"))) {
-      run(["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes",
+      run(["req", "-x509", ...ecKey,
         "-keyout", "ca.key", "-out", "ca.crt", "-days", "30", "-subj", "/CN=Taloss"]);
-      run(["req", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes",
+      run(["req", ...ecKey,
         "-keyout", "client.key", "-out", "client.csr", "-subj", "/CN=test-device"]);
       run(["x509", "-req", "-in", "client.csr", "-CA", "ca.crt", "-CAkey", "ca.key", "-CAcreateserial",
         "-days", "30", "-sha256", "-out", "client.crt"]);
