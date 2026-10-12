@@ -172,7 +172,11 @@ Window {
                 MarkdownView {
                     id: reply
                     width: scroller.width
-                    blocks: quick.answer.length > 0 ? quick.answer : quick.turn.blocks
+                    // The live reply only while this window is asking:
+                    // otherwise every reply in the main window would be
+                    // laid out a second time here, out of sight.
+                    blocks: quick.answer.length > 0 ? quick.answer
+                          : quick.visible && quick.question !== "" ? quick.turn.blocks : []
                     onLinkActivated: link => quick.main.openLink(link)
                 }
                 C.ScrollBar.vertical: C.ScrollBar { }

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 import QtQuick
 import QtQuick.Controls.Basic as C
-import QtQuick.Dialogs
 import QtQuick.Layouts
 import Talos.Native
 
@@ -440,11 +439,11 @@ C.ApplicationWindow {
         ]
     }
 
-    FileDialog {
+    FilePicker {
         id: saveDialog
         property string chatId
         title: qsTr("Save the conversation")
-        fileMode: FileDialog.SaveFile
+        fileMode: FilePicker.SaveFile
         nameFilters: [qsTr("Markdown (*.md)"), qsTr("Text (*.txt)")]
         defaultSuffix: "md"
         onAccepted: {

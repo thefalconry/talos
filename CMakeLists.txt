@@ -101,6 +101,7 @@ qt_add_executable(talos
     src/app/NoNetwork.h src/app/NoNetwork.cpp
     src/app/FlowChartItem.h src/app/FlowChartItem.cpp
     src/app/GlobalShortcut.h src/app/GlobalShortcut.cpp
+    src/app/FilePicker.h src/app/FilePicker.cpp
 )
 
 set(TALON_QML_SINGLETONS qml/Theme.qml)
@@ -152,6 +153,17 @@ if(ANDROID)
         set_property(TARGET talos APPEND PROPERTY
             QT_ANDROID_EXTRA_LIBS "${TALOS_ANDROID_OPENSSL_DIR}/${lib}")
     endforeach()
+
+    # Only the plugins the app can load go into the package. Left to
+    # itself the packager takes every plugin of every module in reach:
+    # text-to-speech links Qt Multimedia, and with that came a whole FFmpeg
+    # (some 17 MB) the app never plays anything through, along with the QML
+    # debugger and position sources for receivers on a serial port.
+    qt_import_plugins(talos
+        EXCLUDE_BY_TYPE multimedia qmltooling
+        EXCLUDE Qt6::QTextToSpeechMockPlugin
+                Qt6::QGeoPositionInfoSourceFactoryNmeaPlugin
+                Qt6::QGeoPositionInfoSourceFactoryPollPlugin)
 endif()
 # The ring is synthesised and played through Qt Multimedia on desktop;
 # Android uses the phone's own ringtone instead.
@@ -181,6 +193,7 @@ endif()
 # only needs the public one, so the same package keeps working when the
 # distribution updates Qt.
 set_target_properties(talos PROPERTIES QT_QMLCACHEGEN_ARGUMENTS "--only-bytecode")
+
 
 if(APPLE AND NOT IOS)
     # The oldest macOS the bundle says it runs on is the one it was built

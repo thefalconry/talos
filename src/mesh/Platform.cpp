@@ -16,6 +16,9 @@
 #  include <QCoreApplication>
 #  include <QJniObject>
 #elif defined(Q_OS_WIN)
+#  ifndef NOMINMAX
+#    define NOMINMAX // or <windows.h> defines min and max as macros
+#  endif
 #  include <windows.h>
 #elif defined(Q_OS_MACOS)
 #  include <CoreFoundation/CoreFoundation.h>

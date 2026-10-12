@@ -145,9 +145,12 @@ daemon's protocol definition rather than ported from the Flutter companion.
   window's title bar, native menus and dialogs, scroll bars, tooltips and
   selections, and the accent tints the open chat's row, your own messages
   and the app mark
-- Light on the processor: nothing is redrawn while nothing changes, and
-  the spinners and other "still going" signs step eight times a second on
-  one shared clock instead of animating every frame
+- Light on the processor: nothing is redrawn while nothing changes, the
+  spinners and other "still going" signs step eight times a second on one
+  shared clock instead of animating every frame, and a reply that streams
+  in is laid out a paragraph at a time, so its cost does not grow with its
+  length. Hidden to the tray, the window gives its graphics memory back;
+  the background service sleeps until something arrives
 - Notifications, tray, launch at sign-in
 - App lock: a passcode (Argon2id) that covers the window and encrypts the
   cached chats (XChaCha20-Poly1305), with fingerprint unlock on Linux
@@ -222,7 +225,14 @@ in Qt Creator. `windeployqt` collects the Qt libraries for distribution.
 cmake --build build-android
 ```
 
-The APK lands under `build-android/android-build/build/outputs/apk/`.
+The APK lands under `build-android/android-build/build/outputs/apk/`. On a
+Mac the SDK is usually `$HOME/Library/Android/sdk`, and a Homebrew Qt of the
+kit's own version can serve as `QT_HOST_PATH` (`/opt/homebrew`). This Qt's
+Gradle template wants Android platform 36 installed to compile against.
+
+The packager decides which Qt modules to pack by reading every `.qml` under
+the source directory, build folders of other platforms included. Build from
+a tree that has none, or use the script below, which makes a clean copy.
 
 ### Packages
 
@@ -237,9 +247,11 @@ It depends on Fedora's own Qt 6 packages rather than bundling Qt.
 packaging/android/build-apk.sh
 ```
 
-builds and signs `dist/talos-<version>-arm64.apk`. It signs with the keystore
-named by `TALOS_KEYSTORE` (see the script); an APK can only be updated by
-one signed with the same key, so keep that file.
+builds and signs `dist/talos-<version>-arm64.apk` (about 63 MB), on Linux
+or a Mac. It signs with the keystore named by `TALOS_KEYSTORE` (see the
+script); an APK can only be updated by one signed with the same key, so
+keep that file. Only what the app loads is packed: no FFmpeg, no QML
+debugger, and none of the Qt Quick styles it does not use.
 
 ```bash
 packaging/macos/build-dmg.sh
@@ -375,8 +387,12 @@ tests/       unit and integration tests, protocol fixtures
 ## Build status
 
 - **Linux**: built, tested (the suite above) and run, including against
-  Fedora's own Qt 6.11 libraries.
-- **Android**: builds a signed arm64 APK. It has not been run on a device,
+  Fedora's own Qt 6.11 libraries. Changes made since on a Mac (the folded
+  tool line, the theme's reach, the file dialogs, screen control's shared
+  half) were compile-checked there against Qt's D-Bus, not rebuilt or run
+  on Linux.
+- **Android**: builds a signed arm64 APK, on Linux and on macOS (Qt 6.11.2,
+  NDK 27, JDK 17). It has not been run on a device,
   so the Android-only code (notifications, battery, ringtone, speech input,
   screen privacy, biometric unlock) is compiled but untried.
 - **macOS**: built, tested (the suite above, with a Keychain round trip

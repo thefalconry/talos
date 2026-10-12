@@ -275,6 +275,13 @@ void App::attach(QQmlEngine *engine, QQuickWindow *window)
     m_window = window;
     m_desktop.installMenuBar();
     m_attached.start();
+    // Closed to the tray, the app may sit unseen for days: let the window
+    // give its scene and its graphics memory back while it is hidden. They
+    // are rebuilt when it is shown again.
+    if (m_window) {
+        m_window->setPersistentSceneGraph(false);
+        m_window->setPersistentGraphics(false);
+    }
     m_session.setScriptEngine(engine);
     m_links.setScriptEngine(engine);
     m_lock.setScriptEngine(engine);

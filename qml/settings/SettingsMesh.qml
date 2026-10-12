@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
 import QtQuick
-import QtQuick.Dialogs
 import Talos.Native
 
 // This device on Talon's mesh, the other devices, and what was run here.
@@ -335,8 +334,9 @@ Pane {
         }
     }
 
-    FolderDialog {
+    FilePicker {
         id: folderPicker
+        fileMode: FilePicker.Folder
         title: qsTr("A folder Talon may use")
         onAccepted: {
             const path = App.localPath(selectedFolder)

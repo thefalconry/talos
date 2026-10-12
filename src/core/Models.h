@@ -307,6 +307,10 @@ private:
 
     const Data *m_data = nullptr;
     QTimer m_frame;
+    /// The draft as blocks, kept until the draft changes: several views
+    /// may ask within one frame.
+    mutable QVariantList m_blocks;
+    mutable QString m_blocksOf;
     mutable QVariantList m_toolRows;
     mutable size_t m_toolRowsMark = 0;
     size_t m_toolsAnnounced = 0;

@@ -260,7 +260,7 @@ void GlobalShortcut::release() {}
 
 GlobalShortcut::~GlobalShortcut()
 {
-#if defined(Q_OS_MACOS)
+#if defined(Q_OS_MACOS) && !defined(TALOS_HAVE_DBUS)
     // The system's handler was given this object: neither may outlive it.
     if (g_hotKey)
         UnregisterEventHotKey(g_hotKey);

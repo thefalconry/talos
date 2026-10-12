@@ -24,6 +24,9 @@
 #  include <CoreFoundation/CoreFoundation.h>
 #  include <Security/Security.h>
 #elif defined(Q_OS_WIN)
+#  ifndef NOMINMAX
+#    define NOMINMAX // or <windows.h> defines min and max as macros
+#  endif
 #  include <windows.h>
 #  include <wincrypt.h>
 #endif
@@ -454,10 +457,10 @@ bool SecretStore::write(const QString &key, const QByteArray &value)
 {
     if (!m_fileOnly && platformAvailable()) {
         if (platformWrite(key, value)) {
-            // A value that moved into the keyring must not linger in the file.
-#if !defined(Q_OS_WIN)
+            // A value that moved into the keyring must not linger in the
+            // file. (On Windows the sealed copy lives in that file too, but
+            // under a name of its own: the plain one still goes.)
             fileWrite(key, nullptr);
-#endif
             return true;
         }
         AppLog::warn("secrets", u"platform store refused a write; using the private file"_s);

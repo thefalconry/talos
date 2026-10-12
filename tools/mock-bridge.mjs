@@ -15,7 +15,8 @@
 //          native-bridge.json there, like the daemon does) · --slow MS ·
 //          --no-commands (behave like a daemon that predates slash commands) ·
 //          --endpoints JSON (fallback addresses for the register reply) ·
-//          --busy (a reply's turn makes six tool calls, not one)
+//          --busy (a reply's turn makes six tool calls, not one) ·
+//          --essay (the reply is some 20 kB long)
 //
 // On start it prints one JSON line: {port, scheme, fingerprint, token, ...}.
 // Test hooks (not part of the protocol): POST /__emit pushes any event to
@@ -350,7 +351,14 @@ async function runTurn(chatId, userText) {
     await sleep(t.durationMs);
     broadcast({ kind: "tool", chatId, id: t.id, name: t.name, phase: "result", output: t.output });
   }
-  const answer =
+  // --essay: a long reply, to see how the client keeps up with a stream.
+  const essay = !flag("essay") ? "" : Array.from({ length: 60 }, (_, i) =>
+    `### Part ${i + 1}\n\nThe quick brown fox jumps over the lazy dog, and then **does it again** ` +
+    `with \`code\` in the middle, a [link](https://example.org/${i}) and enough words to wrap ` +
+    `across a few lines of the column so that layout has real work to do each time.\n\n` +
+    `- first point of part ${i + 1}\n- second point, a little longer than the first\n\n`).join("") +
+    "```cpp\nint main() { return 0; }\n```\n\n";
+  const answer = essay +
     `You said: *${userText.trim() || "(a file)"}*\n\n` +
     "This is the mock bridge answering, token by token. A real daemon would run a model here.\n\n" +
     "```python\ndef greet(name: str) -> str:\n    return f\"Hello, {name}!\"  # streamed code\n```\n\n" +

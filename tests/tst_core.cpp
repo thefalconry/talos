@@ -402,6 +402,27 @@ private slots:
         QVERIFY(!blocks.at(3).toMap().value(u"closed"_s).toBool());
         QCOMPARE(blocks.at(3).toMap().value(u"code"_s).toString(), u"open"_s);
 
+        // Prose is cut into the paragraphs it is made of, so a reply that
+        // is streaming in only ever relays its last one. A list stays whole
+        // across the gaps between its items and the text set under them,
+        // and so does a quotation.
+        const auto texts = [](const QString &text) {
+            QStringList out;
+            for (const QVariant &b : markdown::split(text))
+                out << b.toMap().value(u"text"_s).toString();
+            return out;
+        };
+        QCOMPARE(texts(u"# Title\n\nFirst.\nStill first.\n\n\nSecond."_s),
+                 (QStringList{u"# Title"_s, u"First.\nStill first."_s, u"Second."_s}));
+        QCOMPARE(texts(u"Steps:\n1. one\n\n2. two\n\n   under two\n\nAfter."_s),
+                 (QStringList{u"Steps:\n1. one\n\n2. two\n\n   under two"_s, u"After."_s}));
+        QCOMPARE(texts(u"> a\n\n> b\n\nplain\n\n- x\n\n- y"_s),
+                 (QStringList{u"> a\n\n> b"_s, u"plain"_s, u"- x\n\n- y"_s}));
+        // "*emphasis*" and "1984." begin no list.
+        QCOMPARE(texts(u"*a*\n\n*b*"_s), (QStringList{u"*a*"_s, u"*b*"_s}));
+        // A link defined at the foot serves the whole text: it stays one.
+        QCOMPARE(texts(u"See [the docs][1].\n\nMore.\n\n[1]: https://example.org"_s).size(), 1);
+
         // A longer fence may contain a shorter one.
         const QVariantList nested = markdown::split(u"````md\n```js\nx\n```\n````"_s);
         QCOMPARE(nested.size(), 1);

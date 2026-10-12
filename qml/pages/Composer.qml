@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 import QtQuick
 import QtQuick.Controls.Basic as C
-import QtQuick.Dialogs
 import QtQuick.Layouts
 import Talos.Native
 
@@ -115,10 +114,10 @@ Item {
         function onListenFailed(reason) { App.toast(reason) }
     }
 
-    FileDialog {
+    FilePicker {
         id: picker
         title: qsTr("Attach files")
-        fileMode: FileDialog.OpenFiles
+        fileMode: FilePicker.OpenFiles
         onAccepted: {
             for (const url of selectedFiles)
                 composer.attach(url)

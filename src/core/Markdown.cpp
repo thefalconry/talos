@@ -173,13 +173,95 @@ QString disarm(const QString &text)
     return out;
 }
 
+/// A line that begins a list item: "- x", "* x", "+ x", "1. x" or "1) x",
+/// under up to three spaces of indent.
+bool startsListItem(QStringView line)
+{
+    int i = 0;
+    while (i < line.size() && i < 3 && line.at(i) == u' ')
+        ++i;
+    if (i >= line.size())
+        return false;
+    const QChar c = line.at(i);
+    if (c == u'-' || c == u'*' || c == u'+')
+        return i + 1 < line.size() && line.at(i + 1) == u' ';
+    int digits = 0;
+    while (i + digits < line.size() && digits < 9 && line.at(i + digits).isDigit())
+        ++digits;
+    if (digits == 0 || i + digits + 1 >= line.size())
+        return false;
+    const QChar after = line.at(i + digits);
+    return (after == u'.' || after == u')') && line.at(i + digits + 1) == u' ';
+}
+
+bool startsQuote(QStringView line)
+{
+    return line.trimmed().startsWith(u'>');
+}
+
+/// Prose cut where one block of the page ends and the next begins: a blank
+/// line, then something that is not more of the same list or quotation.
+///
+/// Each piece is laid out as a text of its own. A reply that is streaming
+/// in only ever changes its last piece, so the work per frame is that
+/// paragraph, not everything written so far; and the pieces stand a little
+/// apart, as paragraphs should.
+QList<QStringList> paragraphs(const QStringList &lines)
+{
+    // "[1]: https://…" defines a link for the whole text, wherever the
+    // reference is: such a text has to stay in one piece.
+    static const QRegularExpression definition(u"^ {0,3}\\[[^\\]]+\\]:\\s*\\S"_s);
+    for (const QString &line : lines) {
+        if (definition.match(line).hasMatch())
+            return {lines};
+    }
+    enum Kind { Plain, List, Quote };
+    QList<QStringList> out;
+    QStringList piece;
+    Kind kind = Plain;
+    int blanks = 0;
+    for (const QString &line : lines) {
+        if (line.trimmed().isEmpty()) {
+            ++blanks;
+            continue;
+        }
+        const bool indented = line.startsWith(u"  "_s) || line.startsWith(u'\t');
+        if (blanks > 0 && !piece.isEmpty()) {
+            // After a gap a list goes on with another item or with text
+            // set under one; a quotation goes on with another quoted line.
+            const bool goesOn = (kind == List && (indented || startsListItem(line)))
+                || (kind == Quote && startsQuote(line));
+            if (goesOn) {
+                for (int i = 0; i < blanks; ++i)
+                    piece << QString();
+            } else {
+                out << piece;
+                piece.clear();
+                kind = Plain;
+            }
+        }
+        blanks = 0;
+        // A list or quotation may begin straight under a line of text.
+        if (startsListItem(line))
+            kind = List;
+        else if (kind == Plain && startsQuote(line))
+            kind = Quote;
+        piece << line;
+    }
+    if (!piece.isEmpty())
+        out << piece;
+    return out;
+}
+
 void pushText(QVariantList &blocks, QStringList &lines)
 {
-    const QString text = disarm(lines.join(u'\n').trimmed());
+    const QList<QStringList> pieces = paragraphs(lines);
     lines.clear();
-    if (text.isEmpty())
-        return;
-    blocks.append(QVariantMap{{u"type"_s, u"text"_s}, {u"text"_s, text}});
+    for (const QStringList &piece : pieces) {
+        const QString text = disarm(piece.join(u'\n').trimmed());
+        if (!text.isEmpty())
+            blocks.append(QVariantMap{{u"type"_s, u"text"_s}, {u"text"_s, text}});
+    }
 }
 
 } // namespace

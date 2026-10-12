@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include "app/App.h"
 #include "app/CodeHighlighter.h"
+#include "app/FilePicker.h"
 #include "app/FlowChartItem.h"
 #include "app/IconItem.h"
 #include "app/NoNetwork.h"
@@ -255,6 +256,7 @@ int main(int argc, char *argv[])
     qmlRegisterType<talos::CodeHighlighter>("Talos.Native", 1, 0, "CodeHighlighter");
     qmlRegisterType<talos::IconItem>("Talos.Native", 1, 0, "VectorPath");
     qmlRegisterType<talos::FlowChartItem>("Talos.Native", 1, 0, "FlowChart");
+    qmlRegisterType<talos::FilePicker>("Talos.Native", 1, 0, "FilePicker");
     qmlRegisterUncreatableType<talos::Session>("Talos.Native", 1, 0, "Session",
                                                u"Session is provided by App"_s);
 

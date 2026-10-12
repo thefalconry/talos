@@ -130,7 +130,10 @@ C.Popup {
                 elide: Text.ElideRight
                 color: Theme.textSecondary
                 font.pixelSize: Theme.body
-                text: screen.turn.text !== "" ? screen.turn.text : screen.lastHeard
+                // Only while this screen is up: bound always, every reply
+                // that streams in the chat behind would be laid out here
+                // too, unseen, on each frame.
+                text: !screen.visible ? "" : screen.turn.text !== "" ? screen.turn.text : screen.lastHeard
             }
             RowLayout {
                 Layout.alignment: Qt.AlignHCenter

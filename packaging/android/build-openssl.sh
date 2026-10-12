@@ -12,7 +12,7 @@
 # with the NDK into build-openssl/<abi>/.
 #
 # Environment (defaults in brackets):
-#   ANDROID_SDK   Android SDK   [$HOME/Android/Sdk]
+#   ANDROID_SDK   Android SDK   [$HOME/Android/Sdk, or $HOME/Library/Android/sdk on a Mac]
 #   ANDROID_NDK   NDK           [newest under $ANDROID_SDK/ndk]
 #   ANDROID_ABI   arm64-v8a | armeabi-v7a | x86_64 | x86   [arm64-v8a]
 #   ANDROID_API   minimum API level, matching the app's    [28]
@@ -24,7 +24,19 @@ version=3.5.9
 sha256=603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a
 
 root=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
-sdk=${ANDROID_SDK:-$HOME/Android/Sdk}
+# The NDK names its tools after the machine they run on, and a Mac spells a
+# few everyday commands differently.
+if [[ "$(uname -s)" == Darwin ]]; then
+    host=darwin-x86_64
+    default_sdk="$HOME/Library/Android/sdk"
+    check() { shasum -a 256 -c -; }
+else
+    host=linux-x86_64
+    default_sdk="$HOME/Android/Sdk"
+    check() { sha256sum -c -; }
+fi
+jobs=$(getconf _NPROCESSORS_ONLN)
+sdk=${ANDROID_SDK:-$default_sdk}
 ndk=${ANDROID_NDK:-$(ls -d "$sdk"/ndk/* | sort -V | tail -1)}
 abi=${ANDROID_ABI:-arm64-v8a}
 api=${ANDROID_API:-28}
@@ -52,7 +64,7 @@ if [[ ! -f "$tarball" ]]; then
         "https://github.com/openssl/openssl/releases/download/openssl-$version/openssl-$version.tar.gz"
     mv "$tarball.part" "$tarball"
 fi
-echo "$sha256  $tarball" | sha256sum -c - >&2
+echo "$sha256  $tarball" | check >&2
 
 src="$work/src-$abi"
 rm -rf "$src"
@@ -60,7 +72,7 @@ mkdir -p "$src"
 tar -xzf "$tarball" -C "$src" --strip-components=1
 
 export ANDROID_NDK_ROOT="$ndk"
-export PATH="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+export PATH="$ndk/toolchains/llvm/prebuilt/$host/bin:$PATH"
 (
     cd "$src"
     # Android has no versioned sonames, so Qt looks for libssl_3.so and
@@ -74,11 +86,11 @@ export PATH="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
     # flag is what 16 KB-page devices require of every native library.
     ./Configure --config=talos.conf "talos-$target" -D__ANDROID_API__="$api" \
         shared no-module no-tests no-docs -Wl,-z,max-page-size=16384 >&2
-    make -j"$(nproc)" build_libs >&2
+    make -j"$jobs" build_libs >&2
 )
 
 mkdir -p "$out"
-strip="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
+strip="$ndk/toolchains/llvm/prebuilt/$host/bin/llvm-strip"
 for lib in libcrypto_3.so libssl_3.so; do
     "$strip" --strip-unneeded -o "$out/$lib" "$src/$lib"
 done

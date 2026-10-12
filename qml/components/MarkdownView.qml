@@ -3,8 +3,11 @@ import QtQuick
 import Talos.Native
 
 // Renders a message's blocks: prose as Markdown, fenced code as CodeBlock.
-// The repeater is keyed by count, so while text streams in only the block
-// that changed is updated; nothing is torn down and rebuilt per token.
+// There is one slot per block, and the slots are added and taken away one
+// at a time as the count changes: while text streams in, a new paragraph
+// costs one new item and a new word costs the last paragraph's layout,
+// nothing more. (A repeater over a bare number rebuilds every item when
+// the number changes.)
 Column {
     id: root
 
@@ -14,14 +17,31 @@ Column {
 
     spacing: 10
 
+    ListModel { id: slots }
+    function fitSlots() {
+        const wanted = blocks.length
+        while (slots.count > wanted)
+            slots.remove(slots.count - 1)
+        while (slots.count < wanted)
+            slots.append({ slot: slots.count })
+    }
+    onBlocksChanged: fitSlots()
+    Component.onCompleted: fitSlots()
+
     Repeater {
-        model: root.blocks.length
+        model: slots
 
         Loader {
             id: slot
             required property int index
             readonly property var block: root.blocks[index] || ({})
             readonly property bool isCode: block.type === "code"
+            // As strings of their own: `block` is a new object whenever
+            // anything streams in, but a string property only announces a
+            // change when its text differs. A text item handed its text
+            // again parses and lays it all out again, changed or not.
+            readonly property string blockText: block.text || ""
+            readonly property string blockCode: block.code || ""
 
             readonly property bool isMath: block.type === "math"
             readonly property bool isChart: isCode && block.lang === "mermaid"
@@ -34,7 +54,7 @@ Column {
                 id: prose
                 TextEdit {
                     width: slot.width
-                    text: slot.block.text || ""
+                    text: slot.blockText
                     readOnly: true
                     // On a phone a drag scrolls the conversation; selection
                     // there is offered through "Copy" on the message.
@@ -66,7 +86,7 @@ Column {
                         id: formula
                         anchors.centerIn: parent
                         width: Math.min(implicitWidth, parent.width - 28)
-                        text: slot.block.text || ""
+                        text: slot.blockText
                         readOnly: true
                         selectByMouse: !App.mobile
                         textFormat: TextEdit.PlainText
@@ -107,7 +127,7 @@ Column {
                             y: 10
                             width: Math.min(implicitWidth, parent.width - 20)
                             height: implicitWidth > 0 ? implicitHeight * (width / implicitWidth) : 0
-                            source: slot.block.code || ""
+                            source: slot.blockCode
                             ink: Theme.text
                             line: Theme.textTertiary
                             fill: Theme.surface
@@ -118,7 +138,7 @@ Column {
                     CodeBlock {
                         visible: !chart.valid || chartHolder.showSource
                         width: parent.width
-                        code: slot.block.code || ""
+                        code: slot.blockCode
                         language: "mermaid"
                     }
                     Text {
@@ -135,7 +155,7 @@ Column {
                 id: codeBlock
                 CodeBlock {
                     width: slot.width
-                    code: slot.block.code || ""
+                    code: slot.blockCode
                     language: slot.block.lang || ""
                     closed: slot.block.closed !== false
                 }

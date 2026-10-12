@@ -7,10 +7,14 @@
 #
 # Environment (defaults in brackets):
 #   QT_ANDROID      Qt for Android kit        [$HOME/Qt/6.11.2/android_arm64_v8a]
-#   QT_HOST         desktop Qt of that version [$HOME/Qt/6.11.2/gcc_64]
-#   ANDROID_SDK     Android SDK               [$HOME/Android/Sdk]
+#   QT_HOST         desktop Qt of that version [$HOME/Qt/6.11.2/gcc_64; on a Mac
+#                                              $HOME/Qt/6.11.2/macos, or Homebrew's
+#                                              when it is that version]
+#   ANDROID_SDK     Android SDK               [$HOME/Android/Sdk; on a Mac
+#                                              $HOME/Library/Android/sdk]
 #   ANDROID_NDK     NDK                       [newest under $ANDROID_SDK/ndk]
-#   JAVA_HOME       a full JDK, for Gradle    [$HOME/Android/jdk if it exists]
+#   JAVA_HOME       a full JDK, for Gradle    [$HOME/Android/jdk if it exists;
+#                                              on a Mac, Homebrew's openjdk@17]
 #   TALOS_KEYSTORE  signing keystore          [$HOME/.android/talos-release.keystore]
 #   TALOS_KEYSTORE_PASS_FILE  file holding its password
 #                                             [$TALOS_KEYSTORE.pass]
@@ -22,16 +26,31 @@ set -euo pipefail
 
 root=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
 qt_android=${QT_ANDROID:-$HOME/Qt/6.11.2/android_arm64_v8a}
-qt_host=${QT_HOST:-$HOME/Qt/6.11.2/gcc_64}
-sdk=${ANDROID_SDK:-$HOME/Android/Sdk}
+if [[ "$(uname -s)" == Darwin ]]; then
+    default_host="$HOME/Qt/6.11.2/macos"
+    # Homebrew's Qt serves as the host when it is the kit's own version.
+    brew_qt=$(brew --prefix 2>/dev/null || true)
+    if [[ ! -d "$default_host" && -x "$brew_qt/bin/qtpaths" \
+          && "$("$brew_qt/bin/qtpaths" --qt-version)" == "$(basename "$(dirname "$qt_android")")" ]]; then
+        default_host="$brew_qt"
+    fi
+    default_sdk="$HOME/Library/Android/sdk"
+    default_jdk="$brew_qt/opt/openjdk@17"
+else
+    default_host="$HOME/Qt/6.11.2/gcc_64"
+    default_sdk="$HOME/Android/Sdk"
+    default_jdk="$HOME/Android/jdk"
+fi
+qt_host=${QT_HOST:-$default_host}
+sdk=${ANDROID_SDK:-$default_sdk}
 ndk=${ANDROID_NDK:-$(ls -d "$sdk"/ndk/* | sort -V | tail -1)}
 keystore=${TALOS_KEYSTORE:-$HOME/.android/talos-release.keystore}
 passfile=${TALOS_KEYSTORE_PASS_FILE:-$keystore.pass}
 alias=${TALOS_KEY_ALIAS:-talos}
 tools=$(ls -d "$sdk"/build-tools/* | sort -V | tail -1)
 # A distribution's default Java is often a runtime without a compiler.
-if [[ -z "${JAVA_HOME:-}" && -x "$HOME/Android/jdk/bin/javac" ]]; then
-    export JAVA_HOME="$HOME/Android/jdk"
+if [[ -z "${JAVA_HOME:-}" && -x "$default_jdk/bin/javac" ]]; then
+    export JAVA_HOME="$default_jdk"
 fi
 version=$(sed -n 's/^    VERSION \([0-9.]*\)$/\1/p' "$root/CMakeLists.txt" | head -1)
 
@@ -43,8 +62,19 @@ version=$(sed -n 's/^    VERSION \([0-9.]*\)$/\1/p' "$root/CMakeLists.txt" | hea
 
 openssl=$(ANDROID_SDK="$sdk" ANDROID_NDK="$ndk" "$root/packaging/android/build-openssl.sh")
 
-build="$root/build-android"
-"$qt_android/bin/qt-cmake" -S "$root" -B "$build" -G Ninja \
+# The packager decides which Qt modules to pack by reading every .qml file
+# under the source directory, and takes them all for the app's own: the
+# build folders of other platforms too, with whatever stale or bundled QML
+# lies in them. So the build is made from a copy that holds the sources and
+# nothing else.
+tree="$root/build-android/tree"
+build="$root/build-android/out"
+mkdir -p "$tree"
+rsync -a --delete --exclude '/build*' --exclude '/dist' --exclude '/.git' "$root/" "$tree/"
+# It also only ever adds to its folder: a library an earlier build put
+# there stays, and is packed again, when this build no longer wants it.
+rm -rf "$build/android-build/libs"
+"$qt_android/bin/qt-cmake" -S "$tree" -B "$build" -G Ninja \
     -DQT_HOST_PATH="$qt_host" -DANDROID_SDK_ROOT="$sdk" -DANDROID_NDK_ROOT="$ndk" \
     -DCMAKE_BUILD_TYPE=Release -DTALOS_BUILD_TESTS=OFF \
     -DTALOS_ANDROID_OPENSSL_DIR="$openssl"

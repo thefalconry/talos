@@ -866,8 +866,13 @@ void TurnState::show(const Data *data)
 
 void TurnState::poke()
 {
-    if (!m_frame.isActive())
-        m_frame.start();
+    if (m_frame.isActive())
+        return;
+    // Thirty frames a second while a reply is short. A long one takes
+    // longer to lay out and is read no faster for being redrawn so often:
+    // it eases down to a dozen.
+    const qsizetype written = m_data ? m_data->draft.size() : 0;
+    m_frame.start(int(qMin<qsizetype>(33 + written / 400, 85)));
 }
 
 void TurnState::flush()
@@ -878,7 +883,16 @@ void TurnState::flush()
 
 QVariantList TurnState::blocks() const
 {
-    return m_data ? markdown::split(m_data->draft) : QVariantList();
+    if (!m_data || m_data->draft.isEmpty()) {
+        m_blocks.clear();
+        m_blocksOf.clear();
+        return {};
+    }
+    if (m_blocksOf != m_data->draft) {
+        m_blocksOf = m_data->draft;
+        m_blocks = markdown::split(m_blocksOf);
+    }
+    return m_blocks;
 }
 
 size_t TurnState::toolsMark() const

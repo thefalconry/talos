@@ -9,10 +9,16 @@
 
 #include <QCoreApplication>
 #include <QFileSystemWatcher>
+#include <QSocketNotifier>
 #include <QTimer>
 #include <atomic>
 #include <csignal>
 #include <cstdio>
+
+#if defined(Q_OS_UNIX)
+#  include <fcntl.h>
+#  include <unistd.h>
+#endif
 
 namespace talos {
 
@@ -20,9 +26,21 @@ using namespace Qt::StringLiterals;
 
 namespace {
 std::atomic_bool g_stop{false};
+#if defined(Q_OS_UNIX)
+// A pipe the signal handler writes one byte into: the event loop sleeps on
+// its other end, so a service that may run for months is not woken three
+// times a second only to ask whether it has been told to stop.
+int g_wake[2] = {-1, -1};
+#endif
 void onSignal(int)
 {
     g_stop.store(true);
+#if defined(Q_OS_UNIX)
+    if (g_wake[1] >= 0) {
+        const char byte = 1;
+        [[maybe_unused]] const auto written = ::write(g_wake[1], &byte, 1);
+    }
+#endif
 }
 } // namespace
 
@@ -99,15 +117,31 @@ int runHeadless(QCoreApplication &app)
 
     // SIGTERM from the service manager: leave through the event loop so the
     // stream is closed and the mesh lock released.
-    std::signal(SIGINT, onSignal);
-    std::signal(SIGTERM, onSignal);
     QTimer stop;
-    stop.setInterval(300);
     QObject::connect(&stop, &QTimer::timeout, &app, [&app] {
         if (g_stop.load())
             app.quit();
     });
-    stop.start();
+#if defined(Q_OS_UNIX)
+    if (::pipe(g_wake) == 0) {
+        for (const int fd : g_wake)
+            ::fcntl(fd, F_SETFL, ::fcntl(fd, F_GETFL) | O_NONBLOCK);
+        auto *woken = new QSocketNotifier(g_wake[0], QSocketNotifier::Read, &app);
+        QObject::connect(woken, &QSocketNotifier::activated, &app, [&app] { app.quit(); });
+    } else {
+        g_wake[0] = g_wake[1] = -1;
+    }
+#endif
+    // Without the pipe (or where there is none), look now and then.
+#if defined(Q_OS_UNIX)
+    if (g_wake[0] < 0)
+#endif
+    {
+        stop.setInterval(300);
+        stop.start();
+    }
+    std::signal(SIGINT, onSignal);
+    std::signal(SIGTERM, onSignal);
 
     AppLog::info("mesh", u"Talos %1 running in the background"_s.arg(QStringLiteral(TALOS_VERSION)));
     session.start();

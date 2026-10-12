@@ -83,13 +83,17 @@ drop_module() {
     done
     rm -rf "$dir"
 }
-# The interface uses the Basic style and nothing below.
-for module in QtQuick/Controls/FluentWinUI3 QtQuick/Controls/Fusion QtQuick/Controls/Imagine \
-        QtQuick/Controls/Material QtQuick/Controls/Universal QtQuick/Controls/iOS \
-        QtQuick/Controls/macOS QtQuick/Controls/designer QtQuick/NativeStyle \
-        QtQuick/LocalStorage QtQuick/Particles QtQuick/Pdf QtQuick/Scene2D QtQuick/Scene3D \
-        QtQuick/Timeline QtQuick/VirtualKeyboard QtQuick/tooling QtQml/StateMachine \
-        QtQml/XmlListModel; do
+# Only the QML modules the interface imports stay; the scanner that reads
+# the app's own QML says which. Every other module the deployment tool
+# brought along goes, unless one that is needed lives inside it.
+libexec="$("$qt/bin/qtpaths" --query QT_INSTALL_LIBEXECS)"
+needed="$("$libexec/qmlimportscanner" -rootPath "$root/qml" \
+    -importPath "$("$qt/bin/qtpaths" --query QT_INSTALL_QML)" \
+    | sed -n 's/.*"relativePath": "\(.*\)".*/\1/p' | sort -u)"
+[ -n "$needed" ] || { echo "the QML import scan found nothing; refusing to prune" >&2; exit 1; }
+find "$qml" -name qmldir | sed "s|^$qml/||; s|/qmldir\$||" | sort -r | while read -r module; do
+    grep -qxF "$module" <<<"$needed" && continue
+    grep -q "^$module/" <<<"$needed" && continue
     drop_module "$module"
 done
 # Plugins for things the app never does: databases, an on-screen keyboard,

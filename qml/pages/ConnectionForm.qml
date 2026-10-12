@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 import QtQuick
 import QtQuick.Controls.Basic as C
-import QtQuick.Dialogs
 import QtQuick.Layouts
 import Talos.Native
 
@@ -368,7 +367,7 @@ ColumnLayout {
         }
     }
 
-    FileDialog {
+    FilePicker {
         id: certPicker
         property url chosen
         title: qsTr("Choose a client certificate")
