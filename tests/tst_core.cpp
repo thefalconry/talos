@@ -33,7 +33,6 @@
 #  include <windows.h>
 #endif
 
-#include <cstdio>
 #include <QCryptographicHash>
 #include <QJsonDocument>
 #include <QProcess>
@@ -165,23 +164,8 @@ class CoreTest : public QObject
 private slots:
     void initTestCase()
     {
-        qInstallMessageHandler([](QtMsgType type, const QMessageLogContext &ctx, const QString &msg) {
-            std::fprintf(stderr, "[qt %d] %s:%u: %s\n", int(type),
-                         ctx.file ? ctx.file : "", ctx.line, qPrintable(msg));
-            std::fflush(stderr);
-        });
-        std::setvbuf(stdout, nullptr, _IONBF, 0);
-        std::setvbuf(stderr, nullptr, _IONBF, 0);
         if (QSslSocket::availableBackends().contains(u"openssl"_s))
             QSslSocket::setActiveBackend(u"openssl"_s);
-    }
-
-    void cleanup()
-    {
-        if (QTest::currentTestFailed()) {
-            std::fprintf(stderr, "!!! FAILED: %s\n", QTest::currentTestFunction());
-            std::fflush(stderr);
-        }
     }
 
     // ── Pure logic ──────────────────────────────────────────────────────────
@@ -1611,16 +1595,13 @@ private slots:
                          || CreateSymbolicLinkW(reinterpret_cast<LPCWSTR>(linkNative.utf16()),
                                                 reinterpret_cast<LPCWSTR>(targetNative.utf16()),
                                                 SYMBOLIC_LINK_FLAG_DIRECTORY);
-        if (linked) {
-            QVERIFY(!MeshService::pathAllowed(allowed.filePath(u"escape/secret"_s), folders));
-            QVERIFY(!MeshService::pathAllowed(allowed.filePath(u"escape/not-yet"_s), folders));
-        }
+        QVERIFY(linked);
 #else
         const bool linked = QFile::link(outside.path(), allowed.filePath(u"escape"_s));
         QVERIFY(linked);
+#endif
         QVERIFY(!MeshService::pathAllowed(allowed.filePath(u"escape/secret"_s), folders));
         QVERIFY(!MeshService::pathAllowed(allowed.filePath(u"escape/not-yet"_s), folders));
-#endif
 
         QVERIFY(MeshService::pathAllowed(allowed.filePath(u"sub/new.txt"_s), folders));
         QVERIFY(MeshService::pathAllowed(allowed.path(), folders));
@@ -2047,27 +2028,5 @@ void CoreTest::SecretStore_readCheck(const QString &id, bool *found)
     SecretStore::instance().read(u"profile/"_s + id, found);
 }
 
-#if defined(Q_OS_WIN)
-#  include <io.h>
-#else
-#  include <unistd.h>
-#endif
-
-int main(int argc, char *argv[])
-{
-#if defined(Q_OS_WIN)
-    _dup2(_fileno(stderr), _fileno(stdout));
-    SetStdHandle(STD_OUTPUT_HANDLE, GetStdHandle(STD_ERROR_HANDLE));
-#else
-    dup2(fileno(stderr), fileno(stdout));
-#endif
-    std::setvbuf(stdout, nullptr, _IONBF, 0);
-    std::setvbuf(stderr, nullptr, _IONBF, 0);
-    qputenv("QT_QPA_PLATFORM", QByteArrayLiteral("minimal"));
-    QCoreApplication app(argc, argv);
-    app.setAttribute(Qt::AA_Use96Dpi, true);
-    CoreTest tc;
-    QTEST_SET_MAIN_SOURCE_PATH
-    return QTest::qExec(&tc, argc, argv);
-}
+QTEST_GUILESS_MAIN(CoreTest)
 #include "tst_core.moc"

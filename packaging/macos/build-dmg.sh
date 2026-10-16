@@ -40,7 +40,7 @@ say() { printf '\n==> %s\n' "$*"; }
 
 say "Building Talos $version ($arch)"
 cmake -S "$root" -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release -DTALOS_BUILD_TESTS=OFF \
-    ${TALOS_UPDATE_REPO:+-DTALOS_UPDATE_REPO="$TALOS_UPDATE_REPO"} \
+    -DTALOS_UPDATE_REPO="${TALOS_UPDATE_REPO:-thefalconry/talos}" \
     ${CMAKE_PREFIX_PATH:+-DCMAKE_PREFIX_PATH="$CMAKE_PREFIX_PATH"} >/dev/null
 cmake --build "$build"
 
@@ -113,16 +113,56 @@ done
 # OpenSSL keeps RC2 and 3DES, which older certificate bundles are sealed
 # with, in a module of its own that it looks for where it was built. When
 # Qt's OpenSSL came into the bundle, that module comes too; the app tells
-# OpenSSL where it is.
+# OpenSSL where it is. Under aqt Qt, libqopensslbackend.dylib dlopens
+# OpenSSL at run time, so macdeployqt does not copy libcrypto/libssl into
+# Frameworks on its own.
+openssl_prefix="$(brew --prefix openssl@3 2>/dev/null || true)"
+if ! ls "$frameworks"/libcrypto.*.dylib >/dev/null 2>&1 && [ -n "$openssl_prefix" ] && [ -d "$openssl_prefix/lib" ]; then
+    for lib in libcrypto.3.dylib libssl.3.dylib; do
+        if [ -f "$openssl_prefix/lib/$lib" ]; then
+            cp -L "$openssl_prefix/lib/$lib" "$frameworks/$lib"
+            chmod u+w "$frameworks/$lib"
+            install_name_tool -id "@executable_path/../Frameworks/$lib" "$frameworks/$lib"
+        fi
+    done
+    if [ -f "$frameworks/libssl.3.dylib" ]; then
+        otool -L "$frameworks/libssl.3.dylib" | awk '/libcrypto\.3\.dylib/ {print $1}' | while read -r was; do
+            [ "$was" = "@executable_path/../Frameworks/libcrypto.3.dylib" ] && continue
+            install_name_tool -change "$was" "@executable_path/../Frameworks/libcrypto.3.dylib" \
+                "$frameworks/libssl.3.dylib"
+        done
+    fi
+fi
 if ls "$frameworks"/libcrypto.*.dylib >/dev/null 2>&1; then
     crypto="$(basename "$(ls "$frameworks"/libcrypto.*.dylib | head -1)")"
+    ssl="$(basename "$(ls "$frameworks"/libssl.*.dylib 2>/dev/null | head -1 || true)")"
+    otool -l "$app/Contents/MacOS/Talos" | grep -q "@executable_path/../Frameworks" || \
+        install_name_tool -add_rpath "@executable_path/../Frameworks" "$app/Contents/MacOS/Talos" 2>/dev/null || true
+    if [ -f "$plugins/tls/libqopensslbackend.dylib" ]; then
+        chmod u+w "$plugins/tls/libqopensslbackend.dylib"
+        otool -l "$plugins/tls/libqopensslbackend.dylib" | grep -q "@loader_path/../../Frameworks" || \
+            install_name_tool -add_rpath "@loader_path/../../Frameworks" "$plugins/tls/libqopensslbackend.dylib" 2>/dev/null || true
+        for lib in "$crypto" $ssl; do
+            [ -n "$lib" ] || continue
+            otool -L "$plugins/tls/libqopensslbackend.dylib" | awk -v l="$lib" 'index($1, l) {print $1}' | while read -r was; do
+                [ "$was" = "@executable_path/../Frameworks/$lib" ] && continue
+                install_name_tool -change "$was" "@executable_path/../Frameworks/$lib" \
+                    "$plugins/tls/libqopensslbackend.dylib" 2>/dev/null || true
+            done
+        done
+    fi
     backend="$("$qt/bin/qtpaths" --query QT_INSTALL_PLUGINS 2>/dev/null || true)/tls/libqopensslbackend.dylib"
     origin="$(otool -L "$backend" 2>/dev/null | awk -v c="$crypto" 'index($1, c) {print $1}' | head -1 || true)"
     legacy="$(dirname "${origin:-/nonexistent}")/ossl-modules/legacy.dylib"
+    if [ ! -f "$legacy" ] && [ -n "$openssl_prefix" ] && [ -f "$openssl_prefix/lib/ossl-modules/legacy.dylib" ]; then
+        legacy="$openssl_prefix/lib/ossl-modules/legacy.dylib"
+    fi
     if [ -f "$legacy" ]; then
         mkdir -p "$plugins/ossl-modules"
-        cp "$legacy" "$plugins/ossl-modules/legacy.dylib"
+        cp -L "$legacy" "$plugins/ossl-modules/legacy.dylib"
         chmod u+w "$plugins/ossl-modules/legacy.dylib"
+        install_name_tool -id "@executable_path/../PlugIns/ossl-modules/legacy.dylib" \
+            "$plugins/ossl-modules/legacy.dylib" 2>/dev/null || true
         # It names the library by wherever its own build found it.
         otool -L "$legacy" | awk -v c="$crypto" 'index($1, c) {print $1}' | while read -r was; do
             install_name_tool -change "$was" "@executable_path/../Frameworks/$crypto" \
@@ -150,7 +190,16 @@ find "$qml" -type l ! -exec test -e {} \; -delete
 # And a library nothing loads any more is dead weight. Start from the
 # program and the plugins, follow what each loads, keep what was reached.
 : >"$work/reached"
-{ echo "$app/Contents/MacOS/Talos"; find "$plugins" -type f -name '*.dylib'; } >"$work/todo"
+for ssl_lib in "$frameworks"/libcrypto.*.dylib "$frameworks"/libssl.*.dylib; do
+    [ -f "$ssl_lib" ] && basename "$ssl_lib" >>"$work/reached"
+done
+{
+    echo "$app/Contents/MacOS/Talos"
+    find "$plugins" -type f -name '*.dylib'
+    for ssl_lib in "$frameworks"/libcrypto.*.dylib "$frameworks"/libssl.*.dylib; do
+        [ -f "$ssl_lib" ] && echo "$ssl_lib"
+    done
+} >"$work/todo"
 while [ -s "$work/todo" ]; do
     : >"$work/next"
     while read -r binary; do

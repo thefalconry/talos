@@ -3,7 +3,6 @@ name: CI/CD
 on:
   push:
     branches: [main, "ci/**"]
-    tags: ["v*"]
   pull_request:
     branches: [main]
   release:
@@ -12,6 +11,9 @@ on:
 
 permissions:
   contents: write
+
+env:
+  TALOS_UPDATE_REPO: thefalconry/talos
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -47,7 +49,8 @@ jobs:
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DTALOS_BUILD_TESTS=ON
+            -DTALOS_BUILD_TESTS=ON \
+            -DTALOS_UPDATE_REPO=thefalconry/talos
           cmake --build build
 
       - name: Run tests
@@ -78,7 +81,9 @@ jobs:
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DTALOS_BUILD_TESTS=OFF
+            -DTALOS_BUILD_TESTS=OFF \
+            -DCMAKE_SKIP_INSTALL_RPATH=ON \
+            -DTALOS_UPDATE_REPO=thefalconry/talos
           cmake --build build --target talos
 
       - name: Build Debian package
@@ -163,12 +168,10 @@ jobs:
           fi
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DTALOS_BUILD_TESTS=ON
+            -DTALOS_BUILD_TESTS=ON \
+            -DTALOS_UPDATE_REPO=thefalconry/talos
           cmake --build build
-          export TALOS_DEBUG=1
-          ./build/talos_tests.exe -v2 -o testlog.txt,txt 2>&1 || TEST_EXIT=$?
-          if [ -f testlog.txt ]; then cat testlog.txt; fi
-          if [ "${TEST_EXIT:-0}" -ne 0 ]; then exit $TEST_EXIT; fi
+          ctest --test-dir build --output-on-failure
 
       - name: Package Windows Installer
         run: |
@@ -180,6 +183,8 @@ jobs:
           
           # Deploy Qt dependencies
           windeployqt --qmldir qml "$STAGE/bin/talos.exe"
+          mkdir -p "$STAGE/bin/tls"
+          cp "$QT_PLUGIN_PATH/tls/qopensslbackend.dll" "$STAGE/bin/tls/"
 
           if [ -d "/c/Program Files/OpenSSL/bin" ]; then
             cp "/c/Program Files/OpenSSL/bin/libcrypto"* "$STAGE/bin/" 2>/dev/null || true
@@ -235,7 +240,8 @@ jobs:
           export DYLD_FALLBACK_LIBRARY_PATH="$(brew --prefix openssl@3)/lib:${DYLD_FALLBACK_LIBRARY_PATH:-}"
           cmake -S . -B build-tests -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DTALOS_BUILD_TESTS=ON
+            -DTALOS_BUILD_TESTS=ON \
+            -DTALOS_UPDATE_REPO=thefalconry/talos
           cmake --build build-tests
           ctest --test-dir build-tests --output-on-failure
 
@@ -279,6 +285,17 @@ jobs:
         run: |
           export DYLD_FALLBACK_LIBRARY_PATH="$(brew --prefix openssl@3)/lib:${DYLD_FALLBACK_LIBRARY_PATH:-}"
           ./packaging/macos/build-dmg.sh
+          MNT=$(hdiutil attach dist/*.dmg -readonly -noverify -noautoopen -nobrowse | sed -n 's|^/dev/.*\(/Volumes/.*\)$|\1|p' | head -1)
+          trap 'hdiutil detach "$MNT" -force -quiet 2>/dev/null || true' EXIT
+          ls -la "$MNT/Talos.app/Contents/Frameworks/libcrypto.3.dylib" \
+                 "$MNT/Talos.app/Contents/Frameworks/libssl.3.dylib" \
+                 "$MNT/Talos.app/Contents/PlugIns/ossl-modules/legacy.dylib" \
+                 "$MNT/Talos.app/Contents/PlugIns/tls/libqopensslbackend.dylib"
+          otool -L "$MNT/Talos.app/Contents/PlugIns/tls/libqopensslbackend.dylib" \
+                   "$MNT/Talos.app/Contents/Frameworks/libssl.3.dylib" \
+                   "$MNT/Talos.app/Contents/Frameworks/libcrypto.3.dylib" \
+                   "$MNT/Talos.app/Contents/PlugIns/ossl-modules/legacy.dylib"
+          env -u DYLD_FALLBACK_LIBRARY_PATH -u DYLD_LIBRARY_PATH "$MNT/Talos.app/Contents/MacOS/Talos" --version
 
       - name: Upload macOS DMG
         uses: actions/upload-artifact@v4
@@ -410,7 +427,7 @@ jobs:
   release:
     name: Publish Release Artifacts
     if: github.event_name == 'release' && github.event.action == 'published'
-    needs: [package-linux, package-fedora, package-windows, package-macos, package-android]
+    needs: [test-linux, package-linux, package-fedora, package-windows, package-macos, package-android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -420,6 +437,13 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
+
+      - name: Generate SHA256SUMS
+        run: |
+          cd artifacts
+          rm -f *.sha256 SHA256SUMS
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
 
       - name: Attach artifacts to release
         env:

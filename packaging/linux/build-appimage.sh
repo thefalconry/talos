@@ -16,7 +16,9 @@ if [[ ! -f "$build_dir/talos" && ! -f "$build_dir/bin/talos" ]]; then
     echo "Talos executable not found in $build_dir. Building..."
     cmake -S "$root" -B "$build_dir" -G Ninja \
         -DCMAKE_BUILD_TYPE=Release \
-        -DTALOS_BUILD_TESTS=OFF
+        -DTALOS_BUILD_TESTS=OFF \
+        -DCMAKE_SKIP_INSTALL_RPATH=ON \
+        -DTALOS_UPDATE_REPO="${TALOS_UPDATE_REPO:-thefalconry/talos}"
     cmake --build "$build_dir" --target talos
 fi
 
@@ -51,11 +53,11 @@ fi
 
 export PATH="$tools_dir:$PATH"
 export QML_SOURCES_PATHS="${QML_SOURCES_PATHS:-$root/qml:$root/src}"
+export EXTRA_PLATFORM_PLUGINS="libqoffscreen.so"
 # Provide dummy qmldir for Talos.Native so linuxdeploy-plugin-qt resolves it
 mkdir -p "$work/qml_modules/Talos/Native"
 cat << 'EOF' > "$work/qml_modules/Talos/Native/qmldir"
 module Talos.Native
-typeinfo plugins.qmltypes
 EOF
 export QML_MODULES_PATHS="$work/qml_modules:${QML_MODULES_PATHS:-}"
 if [[ -n "${QT_ROOT_DIR:-}" ]]; then

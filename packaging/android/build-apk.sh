@@ -86,12 +86,13 @@ rm -rf "$build/android-build/libs"
 "$qt_android/bin/qt-cmake" -S "$tree" -B "$build" -G Ninja \
     -DQT_HOST_PATH="$qt_host" -DANDROID_SDK_ROOT="$sdk" -DANDROID_NDK_ROOT="$ndk" \
     -DCMAKE_BUILD_TYPE=Release -DTALOS_BUILD_TESTS=OFF \
+    -DTALOS_UPDATE_REPO="${TALOS_UPDATE_REPO:-thefalconry/talos}" \
     -DTALOS_ANDROID_OPENSSL_DIR="$openssl"
 cmake --build "$build"
 
 unsigned="$build/android-build/build/outputs/apk/release/android-build-release-unsigned.apk"
 if [[ ! -f "$unsigned" ]]; then
-    unsigned=$(find "$build/android-build" -name '*.apk' ! -name '*signed*' | head -1)
+    unsigned=$(find "$build/android-build" -name '*-unsigned.apk' | head -1)
 fi
 [[ -f "$unsigned" ]] || { echo "No unsigned APK found in $build/android-build" >&2; exit 1; }
 mkdir -p "$root/dist"
