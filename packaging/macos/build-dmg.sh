@@ -40,7 +40,8 @@ say() { printf '\n==> %s\n' "$*"; }
 
 say "Building Talos $version ($arch)"
 cmake -S "$root" -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release -DTALOS_BUILD_TESTS=OFF \
-    ${TALOS_UPDATE_REPO:+-DTALOS_UPDATE_REPO="$TALOS_UPDATE_REPO"} >/dev/null
+    ${TALOS_UPDATE_REPO:+-DTALOS_UPDATE_REPO="$TALOS_UPDATE_REPO"} \
+    ${CMAKE_PREFIX_PATH:+-DCMAKE_PREFIX_PATH="$CMAKE_PREFIX_PATH"} >/dev/null
 cmake --build "$build"
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/talos-dmg.XXXXXX")"
@@ -60,6 +61,10 @@ say "Bundling Qt"
 # The tools of the Qt the app was built against, not whichever is on PATH.
 qt="$(cd "$(sed -n 's/^Qt6_DIR:[A-Z]*=//p' "$build/CMakeCache.txt")/../../.." && pwd)"
 deploy="$qt/bin/macdeployqt"
+if [ ! -x "$deploy" ] && command -v macdeployqt >/dev/null 2>&1; then
+    deploy="$(command -v macdeployqt)"
+    qt="$(cd "$(dirname "$deploy")/.." && pwd)"
+fi
 [ -x "$deploy" ] || { echo "macdeployqt was not found in $qt/bin" >&2; exit 1; }
 # It copies every module the interface could import, among them ones this
 # Qt has but the bundle will not get (and says so at length). What it
@@ -180,8 +185,11 @@ fi
 echo "bundle: $(du -sh "$app" | cut -f1)"
 
 say "Signing ($([ "$identity" = "-" ] && echo "ad hoc" || echo "$identity"))"
-sign=(codesign --force --timestamp=none --sign "$identity")
-[ "$identity" != "-" ] && sign=(codesign --force --timestamp --options runtime --sign "$identity")
+if [ "$identity" = "-" ] || [ "$identity" = "Talon Companion" ]; then
+    sign=(codesign --force --timestamp=none --sign "$identity")
+else
+    sign=(codesign --force --timestamp --options runtime --sign "$identity")
+fi
 # Inside out: every library and plugin, then the frameworks, then the app.
 find "$app/Contents" -type f \( -name '*.dylib' -o -name '*.so' \) -print0 | xargs -0 "${sign[@]}" 2>/dev/null
 find "$app/Contents/Frameworks" -maxdepth 1 -name '*.framework' -print0 2>/dev/null \
@@ -220,11 +228,15 @@ rm -f "$out"
 hdiutil convert "$rw" -quiet -format UDZO -imagekey zlib-level=9 -o "$out"
 
 if [ "$identity" != "-" ]; then
-    codesign --force --timestamp --sign "$identity" "$out"
-    if [ -n "${TALOS_NOTARY_PROFILE:-}" ]; then
-        say "Notarising"
-        xcrun notarytool submit "$out" --keychain-profile "$TALOS_NOTARY_PROFILE" --wait
-        xcrun stapler staple "$out"
+    if [ "$identity" = "Talon Companion" ]; then
+        codesign --force --timestamp=none --sign "$identity" "$out"
+    else
+        codesign --force --timestamp --sign "$identity" "$out"
+        if [ -n "${TALOS_NOTARY_PROFILE:-}" ]; then
+            say "Notarising"
+            xcrun notarytool submit "$out" --keychain-profile "$TALOS_NOTARY_PROFILE" --wait
+            xcrun stapler staple "$out"
+        fi
     fi
 fi
 

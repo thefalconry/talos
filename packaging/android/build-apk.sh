@@ -54,11 +54,20 @@ if [[ -z "${JAVA_HOME:-}" && -x "$default_jdk/bin/javac" ]]; then
 fi
 version=$(sed -n 's/^    VERSION \([0-9.]*\)$/\1/p' "$root/CMakeLists.txt" | head -1)
 
-[[ -f "$keystore" && -f "$passfile" ]] || {
-    echo "No signing keystore at $keystore (with its password in $passfile)." >&2
-    echo "Create one with keytool -genkeypair, or set TALOS_KEYSTORE." >&2
-    exit 1
-}
+if [[ ! -f "$keystore" || ! -f "$passfile" ]]; then
+    if [[ "${TALON_ANDROID_REQUIRE_RELEASE_SIGNING:-0}" == "1" ]]; then
+        echo "TALON_ANDROID_REQUIRE_RELEASE_SIGNING=1 but no signing keystore at $keystore (with its password in $passfile)." >&2
+        exit 1
+    fi
+    echo "No signing keystore at $keystore; falling back to temporary debug keystore." >&2
+    keystore=$(mktemp "${TMPDIR:-/tmp}/talos-debug.keystore.XXXXXX")
+    passfile=$(mktemp "${TMPDIR:-/tmp}/talos-debug.pass.XXXXXX")
+    printf "android" > "$passfile"
+    keytool -genkeypair -v -keystore "$keystore" -storepass android \
+        -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 \
+        -validity 10000 -dname "CN=Android Debug,O=Android,C=US" >/dev/null 2>&1
+    alias="androiddebugkey"
+fi
 
 openssl=$(ANDROID_SDK="$sdk" ANDROID_NDK="$ndk" "$root/packaging/android/build-openssl.sh")
 
@@ -81,6 +90,10 @@ rm -rf "$build/android-build/libs"
 cmake --build "$build"
 
 unsigned="$build/android-build/build/outputs/apk/release/android-build-release-unsigned.apk"
+if [[ ! -f "$unsigned" ]]; then
+    unsigned=$(find "$build/android-build" -name '*.apk' ! -name '*signed*' | head -1)
+fi
+[[ -f "$unsigned" ]] || { echo "No unsigned APK found in $build/android-build" >&2; exit 1; }
 mkdir -p "$root/dist"
 out="$root/dist/talos-$version-arm64.apk"
 "$tools/zipalign" -f -p 4 "$unsigned" "$out.aligned"

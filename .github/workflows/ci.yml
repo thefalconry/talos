@@ -1,0 +1,408 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main, "ci/**"]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test-linux:
+    name: Test (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake libgl1-mesa-dev libxkbcommon-dev libx11-xcb1 libglu1-mesa-dev libxcb-cursor0 libpulse-dev libasound2-dev
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.2'
+          modules: 'qtmultimedia qtpositioning qtspeech'
+          cache: true
+
+      - name: Configure and build
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DTALOS_BUILD_TESTS=ON
+          cmake --build build
+
+      - name: Run tests
+        run: |
+          ctest --test-dir build --output-on-failure
+
+  package-linux:
+    name: Package (Linux AppImage & Deb)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake libgl1-mesa-dev libxkbcommon-dev libx11-xcb1 libglu1-mesa-dev libxcb-cursor0 libpulse-dev libasound2-dev file curl
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.2'
+          modules: 'qtmultimedia qtpositioning qtspeech'
+          cache: true
+
+      - name: Build Talos
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DTALOS_BUILD_TESTS=OFF
+          cmake --build build --target talos
+
+      - name: Build Debian package
+        run: |
+          ./packaging/debian/build-deb.sh build
+
+      - name: Build AppImage package
+        run: |
+          ./packaging/linux/build-appimage.sh build
+
+      - name: Upload Debian package
+        uses: actions/upload-artifact@v4
+        with:
+          name: talos-linux-deb
+          path: dist/*.deb
+
+      - name: Upload AppImage package
+        uses: actions/upload-artifact@v4
+        with:
+          name: talos-linux-appimage
+          path: dist/*.AppImage
+
+  package-fedora:
+    name: Package (Fedora RPM)
+    runs-on: ubuntu-latest
+    container: fedora:41
+    timeout-minutes: 25
+    steps:
+      - name: Install build tools and Qt
+        run: |
+          dnf install -y rpm-build git cmake ninja-build gcc-c++ desktop-file-utils \
+              qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtmultimedia-devel \
+              qt6-qtspeech-devel qt6-qtpositioning-devel qt6-linguist
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build RPM
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          ./packaging/fedora/build-rpm.sh
+
+      - name: Upload Fedora RPM
+        uses: actions/upload-artifact@v4
+        with:
+          name: talos-fedora-rpm
+          path: dist/*.rpm
+
+  package-windows:
+    name: Package (Windows Installer)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.2'
+          arch: 'win64_msvc2022_64'
+          modules: 'qtmultimedia qtpositioning qtspeech'
+          cache: true
+
+      - name: Build and Test
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DTALOS_BUILD_TESTS=ON
+          cmake --build build
+          ctest --test-dir build --output-on-failure
+
+      - name: Package Windows Installer
+        run: |
+          set -euo pipefail
+          VERSION=$(sed -n 's/^ *VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt | head -1)
+          STAGE="$RUNNER_TEMP/talos-staging"
+          mkdir -p "$STAGE"
+          cmake --install build --prefix "$STAGE"
+          
+          # Deploy Qt dependencies
+          windeployqt --qmldir qml "$STAGE/bin/talos.exe"
+
+          # Add Inno Setup to PATH
+          if [ -d "/c/Program Files (x86)/Inno Setup 6" ]; then
+            export PATH="/c/Program Files (x86)/Inno Setup 6:$PATH"
+          fi
+          command -v ISCC.exe >/dev/null 2>&1 || choco install innosetup --no-progress -y || true
+
+          mkdir -p dist
+          ISCC.exe "-DAppVersion=$VERSION" "-DSourceDir=$STAGE/bin" "-Ftalos-windows-setup-$VERSION" "-O$PWD/dist" packaging/windows/talos.iss
+          ls -la dist/
+
+      - name: Upload Windows Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: talos-windows-installer
+          path: dist/*.exe
+
+  package-macos:
+    name: Package (macOS DMG)
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install build tools
+        run: |
+          brew install ninja
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.2'
+          arch: 'clang_64'
+          modules: 'qtmultimedia qtpositioning qtspeech'
+          cache: true
+
+      - name: Run tests
+        run: |
+          cmake -S . -B build-tests -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DTALOS_BUILD_TESTS=ON
+          cmake --build build-tests
+          ctest --test-dir build-tests --output-on-failure
+
+      - name: Set up macOS signing identity
+        shell: bash
+        env:
+          SIGNING_P12: ${{ secrets.TALON_MAC_SIGNING_P12 }}
+          SIGNING_PASSWORD: ${{ secrets.TALON_MAC_SIGNING_PASSWORD }}
+          IS_RELEASE: ${{ github.event_name == 'release' }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SIGNING_P12" ]; then
+            MSG="TALON_MAC_SIGNING_P12 is not set — signing ad-hoc. Keychain items (bridge credential, app lock) will not survive this update on users' Macs."
+            if [ "$IS_RELEASE" = "true" ]; then
+              echo "::warning::$MSG"
+            else
+              echo "$MSG"
+            fi
+            exit 0
+          fi
+          KEYCHAIN="$RUNNER_TEMP/talon-signing.keychain-db"
+          KEYCHAIN_PASSWORD=$(openssl rand -hex 24)
+          P12="$RUNNER_TEMP/talon-signing.p12"
+          printf '%s' "$SIGNING_P12" | base64 -d > "$P12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$P12" -k "$KEYCHAIN" -P "$SIGNING_PASSWORD" -T /usr/bin/codesign -f pkcs12
+          rm -f "$P12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          if ! security find-identity -p codesigning "$KEYCHAIN" | grep -q '"Talon Companion"'; then
+            echo "::error::TALON_MAC_SIGNING_P12 has no \"Talon Companion\" codesigning identity"
+            security find-identity -p codesigning "$KEYCHAIN"
+            exit 1
+          fi
+          echo "TALOS_SIGN_IDENTITY=Talon Companion" >> "$GITHUB_ENV"
+          echo "TALON_MAC_SIGNING_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+
+      - name: Build DMG
+        run: |
+          ./packaging/macos/build-dmg.sh
+
+      - name: Upload macOS DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: talos-macos-dmg
+          path: |
+            dist/*.dmg
+            dist/*.dmg.sha256
+
+  package-android:
+    name: Package (Android APK)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install host build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake rsync unzip
+
+      - name: Install Desktop Qt (Host)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.2'
+          target: 'desktop'
+          modules: 'qtmultimedia qtpositioning qtspeech'
+          dir: ${{ runner.temp }}/qt-host
+          cache: true
+          cache-key-prefix: 'qt-host-android'
+
+      - name: Install Android Qt (Target)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.2'
+          target: 'android'
+          arch: 'android_arm64_v8a'
+          modules: 'qtmultimedia qtpositioning qtspeech'
+          dir: ${{ runner.temp }}/qt-android
+          cache: true
+          cache-key-prefix: 'qt-target-android'
+
+      - name: Set up Android keystore
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          IS_RELEASE: ${{ github.event_name == 'release' }}
+        run: |
+          set -euo pipefail
+          if [ "$IS_RELEASE" = "true" ]; then
+            echo "TALON_ANDROID_REQUIRE_RELEASE_SIGNING=1" >> "$GITHUB_ENV"
+          fi
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            if [ "$IS_RELEASE" = "true" ]; then
+              echo "::error::ANDROID_KEYSTORE_BASE64 is not set — refusing to publish a debug-signed release APK."
+              exit 1
+            fi
+            echo "No ANDROID_KEYSTORE_BASE64 secret — falling back to debug signing."
+            KEYSTORE_FILE="$RUNNER_TEMP/debug.keystore"
+            PASS_FILE="$RUNNER_TEMP/debug.pass"
+            printf 'android' > "$PASS_FILE"
+            keytool -genkeypair -v -keystore "$KEYSTORE_FILE" -storepass android \
+              -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 \
+              -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+            {
+              echo "TALOS_KEYSTORE=$KEYSTORE_FILE"
+              echo "TALOS_KEYSTORE_PASS_FILE=$PASS_FILE"
+              echo "TALOS_KEY_ALIAS=androiddebugkey"
+            } >> "$GITHUB_ENV"
+            exit 0
+          fi
+          KEYSTORE_FILE="$RUNNER_TEMP/talon-release.p12"
+          PASS_FILE="$RUNNER_TEMP/talon-release.pass"
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$KEYSTORE_FILE"
+          printf '%s' "$KEYSTORE_PASSWORD" > "$PASS_FILE"
+          {
+            echo "TALOS_KEYSTORE=$KEYSTORE_FILE"
+            echo "TALOS_KEYSTORE_PASS_FILE=$PASS_FILE"
+            echo "TALOS_KEY_ALIAS=talon"
+          } >> "$GITHUB_ENV"
+
+      - name: Build Android APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          export QT_HOST=$(find "${{ runner.temp }}/qt-host" -type d \( -name "gcc_64" -o -name "linux_gcc_64" \) | head -1)
+          export QT_ANDROID=$(find "${{ runner.temp }}/qt-android" -type d -name "android_arm64_v8a" | head -1)
+          export ANDROID_SDK="$ANDROID_HOME"
+          export ANDROID_NDK=$(ls -d "$ANDROID_SDK"/ndk/* 2>/dev/null | sort -V | tail -1)
+          if [ -z "$ANDROID_NDK" ]; then
+            echo y | "$ANDROID_SDK/cmdline-tools/latest/bin/sdkmanager" --install "ndk;26.3.11579264"
+            export ANDROID_NDK="$ANDROID_SDK/ndk/26.3.11579264"
+          fi
+          echo "Using QT_HOST=$QT_HOST"
+          echo "Using QT_ANDROID=$QT_ANDROID"
+          echo "Using ANDROID_NDK=$ANDROID_NDK"
+          ./packaging/android/build-apk.sh
+
+      - name: Verify Android APK signer
+        shell: bash
+        env:
+          IS_RELEASE: ${{ github.event_name == 'release' }}
+        run: |
+          set -euo pipefail
+          APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner
+          CERTS=$("$APKSIGNER" verify --print-certs dist/*.apk)
+          echo "$CERTS"
+          if [ "$IS_RELEASE" = "true" ] && grep -q "CN=Android Debug" <<< "$CERTS"; then
+            echo "::error::release APK is signed with the Android debug key"
+            exit 1
+          fi
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: talos-android-apk
+          path: dist/*.apk
+
+  release:
+    name: Publish Release Artifacts
+    if: github.event_name == 'release' && github.event.action == 'published'
+    needs: [package-linux, package-fedora, package-windows, package-macos, package-android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Attach artifacts to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" artifacts/* --clobber
