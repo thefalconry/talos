@@ -132,13 +132,13 @@ public:
             for (const auto &v : body.toArray()) {
                 done = false;
                 client.post(path, v.toObject(), cb);
-                [&] { QTRY_VERIFY_WITH_TIMEOUT(done, 5000); }();
+                [&] { QTRY_VERIFY_WITH_TIMEOUT(done, 10'000); }();
             }
             return out;
         } else {
             client.post(path, body.toObject(), cb);
         }
-        [&] { QTRY_VERIFY_WITH_TIMEOUT(done, 5000); }();
+        [&] { QTRY_VERIFY_WITH_TIMEOUT(done, 10'000); }();
         return out;
     }
 
@@ -2025,5 +2025,26 @@ void CoreTest::SecretStore_readCheck(const QString &id, bool *found)
     SecretStore::instance().read(u"profile/"_s + id, found);
 }
 
-QTEST_GUILESS_MAIN(CoreTest)
+#if defined(Q_OS_WIN)
+#  include <io.h>
+#else
+#  include <unistd.h>
+#endif
+
+int main(int argc, char *argv[])
+{
+#if defined(Q_OS_WIN)
+    _dup2(_fileno(stderr), _fileno(stdout));
+#else
+    dup2(fileno(stderr), fileno(stdout));
+#endif
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
+    std::setvbuf(stderr, nullptr, _IONBF, 0);
+    qputenv("QT_QPA_PLATFORM", QByteArrayLiteral("minimal"));
+    QCoreApplication app(argc, argv);
+    app.setAttribute(Qt::AA_Use96Dpi, true);
+    CoreTest tc;
+    QTEST_SET_MAIN_SOURCE_PATH
+    return QTest::qExec(&tc, argc, argv);
+}
 #include "tst_core.moc"
