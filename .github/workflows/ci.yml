@@ -165,7 +165,9 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DTALOS_BUILD_TESTS=ON
           cmake --build build
-          ./build/talos_tests.exe -v2 -o -,txt
+          ./build/talos_tests.exe -v2 -o test_results.txt,txt || true
+          cat test_results.txt
+          grep -q "Totals:.*0 failed" test_results.txt
 
       - name: Package Windows Installer
         run: |

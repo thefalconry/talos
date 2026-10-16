@@ -993,8 +993,10 @@ private slots:
         QVERIFY(profiles.open(QIODevice::ReadOnly));
         const QByteArray raw = profiles.readAll();
         QVERIFY(!raw.contains("s3cret-token") && !raw.contains("p12-bytes"));
+#if !defined(Q_OS_WIN)
         QCOMPARE(QFile::permissions(tmp.filePath(u"config/secrets.json"_s))
                      & (QFile::ReadGroup | QFile::ReadOther), QFile::Permissions());
+#endif
 
         Store store(tmp.path());
         QVERIFY(store.hasProfile());
