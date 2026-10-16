@@ -773,10 +773,17 @@ private slots:
         // The marker is assembled here so this test binary carries no
         // second complete one.
         const QByteArray marker = QByteArray("TALOS-BUILD-") + "VERSION:";
+#if defined(Q_OS_WIN)
+        const QString exe = write(u"talos.exe"_s, "old program " + marker + "1.0.0;");
+        const QString newer = write(u"newer.exe"_s, QByteArray(3000, 'x') + marker + "1.2.0; tail");
+        const QString older = write(u"older.exe"_s, marker + "0.9.0;");
+        const QString node = write(u"talon-node.exe"_s, "a different program entirely");
+#else
         const QString exe = write(u"talos"_s, "old program " + marker + "1.0.0;");
         const QString newer = write(u"newer"_s, QByteArray(3000, 'x') + marker + "1.2.0; tail");
         const QString older = write(u"older"_s, marker + "0.9.0;");
         const QString node = write(u"talon-node"_s, "a different program entirely");
+#endif
 
         QCOMPARE(selfupdate::versionOf(newer), u"1.2.0"_s);
         QCOMPARE(selfupdate::versionOf(node), QString());
@@ -1565,16 +1572,23 @@ private slots:
             QFile secret(outside.filePath(u"secret"_s));
             QVERIFY(secret.open(QIODevice::WriteOnly));
         }
-        // A link inside the allowed folder that leads out of it.
-        QVERIFY(QFile::link(outside.path(), allowed.filePath(u"escape"_s)));
         const QStringList folders{allowed.path()};
+        // A link inside the allowed folder that leads out of it.
+        const bool linked = QFile::link(outside.path(), allowed.filePath(u"escape"_s));
+#if defined(Q_OS_WIN)
+        if (linked)
+#else
+        QVERIFY(linked);
+#endif
+        {
+            QVERIFY(!MeshService::pathAllowed(allowed.filePath(u"escape/secret"_s), folders));
+            QVERIFY(!MeshService::pathAllowed(allowed.filePath(u"escape/not-yet"_s), folders));
+        }
 
         QVERIFY(MeshService::pathAllowed(allowed.filePath(u"sub/new.txt"_s), folders));
         QVERIFY(MeshService::pathAllowed(allowed.path(), folders));
         QVERIFY(!MeshService::pathAllowed(outside.filePath(u"secret"_s), folders));
         QVERIFY(!MeshService::pathAllowed(allowed.filePath(u"../x"_s), folders));
-        QVERIFY(!MeshService::pathAllowed(allowed.filePath(u"escape/secret"_s), folders));
-        QVERIFY(!MeshService::pathAllowed(allowed.filePath(u"escape/not-yet"_s), folders));
         // A sibling whose name merely starts the same way is not inside.
         QVERIFY(!MeshService::pathAllowed(allowed.path() + u"-other/file"_s, folders));
         QVERIFY(MeshService::pathAllowed(outside.filePath(u"secret"_s), {}));
