@@ -442,7 +442,7 @@ private slots:
         QVERIFY(crypto::argon2id("wrong horse", salt, 1024, 2) != key);
 
         const QByteArray sealed = crypto::seal(key, "snapshot", "profile-1");
-        QCOMPARE(crypto::open(key, sealed, "profile-1").value_or({}), QByteArray("snapshot"));
+        QCOMPARE(crypto::open(key, sealed, "profile-1").value_or(QByteArray{}), QByteArray("snapshot"));
         QVERIFY(!crypto::open(key, sealed, "profile-2"));
         QVERIFY(!crypto::open(crypto::randomBytes(32), sealed, "profile-1"));
         QByteArray tampered = sealed;

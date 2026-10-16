@@ -50,7 +50,7 @@ if [[ ! -x "$tools_dir/linuxdeploy-plugin-qt" ]]; then
 fi
 
 export PATH="$tools_dir:$PATH"
-export QML_SOURCES_PATHS="$root/qml"
+export QML_SOURCES_PATHS="${QML_SOURCES_PATHS:-$root/qml:$root/src}"
 if [[ -n "${QT_ROOT_DIR:-}" ]]; then
     export QT_DIR="$QT_ROOT_DIR"
     export QMAKE="$QT_ROOT_DIR/bin/qmake"

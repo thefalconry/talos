@@ -136,7 +136,9 @@ if(APPLE AND NOT IOS)
 endif()
 if(ANDROID)
     # QtAndroidPrivate::startActivity, for the system speech recogniser.
-    find_package(Qt6 REQUIRED COMPONENTS CorePrivate)
+    if(NOT TARGET Qt6::CorePrivate)
+        find_package(Qt6 REQUIRED COMPONENTS CorePrivate)
+    endif()
     target_link_libraries(talos PRIVATE Qt6::CorePrivate)
 
     # Qt has no TLS of its own on Android: it loads these two at run time,

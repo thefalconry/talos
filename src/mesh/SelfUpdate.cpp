@@ -17,17 +17,20 @@ namespace {
 
 // Built from two halves so the only complete marker in the binary is the
 // one below with a version behind it.
-const QByteArray &markerPrefix()
-{
-    static const QByteArray prefix = QByteArray("TALOS-BUILD-") + QByteArray("VERSION:");
-    return prefix;
-}
-
 // The marker itself. `used` keeps the linker from discarding it.
 #if defined(__GNUC__)
 __attribute__((used))
+#elif defined(_MSC_VER)
+#pragma comment(linker, "/include:kBuildMarker")
 #endif
 extern const char kBuildMarker[] = "TALOS-BUILD-" "VERSION:" TALOS_VERSION ";";
+
+const QByteArray &markerPrefix()
+{
+    static const QByteArray prefix = QByteArray("TALOS-BUILD-") + QByteArray("VERSION:");
+    (void)kBuildMarker;
+    return prefix;
+}
 
 } // namespace
 
