@@ -26,6 +26,7 @@
 #include "mesh/SelfUpdate.h"
 #include "mesh/ServiceInstall.h"
 
+#include <cstdio>
 #include <QCryptographicHash>
 #include <QJsonDocument>
 #include <QProcess>
@@ -157,6 +158,8 @@ class CoreTest : public QObject
 private slots:
     void initTestCase()
     {
+        std::setvbuf(stdout, nullptr, _IONBF, 0);
+        std::setvbuf(stderr, nullptr, _IONBF, 0);
         if (QSslSocket::availableBackends().contains(u"openssl"_s))
             QSslSocket::setActiveBackend(u"openssl"_s);
     }
