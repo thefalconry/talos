@@ -1591,15 +1591,19 @@ private slots:
 
     void deviceControlLimits()
     {
+        std::fprintf(stderr, "[DCL 0] start\n"); std::fflush(stderr);
         QTemporaryDir allowed, outside, home, mockDir;
         QVERIFY(QDir(allowed.path()).mkpath(u"sub"_s));
+        std::fprintf(stderr, "[DCL 1] mkpath sub ok\n"); std::fflush(stderr);
         {
             QFile secret(outside.filePath(u"secret"_s));
             QVERIFY(secret.open(QIODevice::WriteOnly));
         }
+        std::fprintf(stderr, "[DCL 2] secret ok\n"); std::fflush(stderr);
         const QStringList folders{allowed.path()};
         // A link inside the allowed folder that leads out of it.
         const bool linked = QFile::link(outside.path(), allowed.filePath(u"escape"_s));
+        std::fprintf(stderr, "[DCL 3] linked=%d\n", int(linked)); std::fflush(stderr);
 #if defined(Q_OS_WIN)
         if (linked)
 #else
@@ -1607,26 +1611,36 @@ private slots:
 #endif
         {
             QVERIFY(!MeshService::pathAllowed(allowed.filePath(u"escape/secret"_s), folders));
+            std::fprintf(stderr, "[DCL 4] escape/secret ok\n"); std::fflush(stderr);
             QVERIFY(!MeshService::pathAllowed(allowed.filePath(u"escape/not-yet"_s), folders));
+            std::fprintf(stderr, "[DCL 5] escape/not-yet ok\n"); std::fflush(stderr);
         }
 
         QVERIFY(MeshService::pathAllowed(allowed.filePath(u"sub/new.txt"_s), folders));
+        std::fprintf(stderr, "[DCL 6] sub/new.txt ok\n"); std::fflush(stderr);
         QVERIFY(MeshService::pathAllowed(allowed.path(), folders));
+        std::fprintf(stderr, "[DCL 7] allowed.path ok\n"); std::fflush(stderr);
         QVERIFY(!MeshService::pathAllowed(outside.filePath(u"secret"_s), folders));
+        std::fprintf(stderr, "[DCL 8] outside/secret ok\n"); std::fflush(stderr);
         QVERIFY(!MeshService::pathAllowed(allowed.filePath(u"../x"_s), folders));
+        std::fprintf(stderr, "[DCL 9] ../x ok\n"); std::fflush(stderr);
         // A sibling whose name merely starts the same way is not inside.
         QVERIFY(!MeshService::pathAllowed(allowed.path() + u"-other/file"_s, folders));
+        std::fprintf(stderr, "[DCL 10] -other/file ok\n"); std::fflush(stderr);
         QVERIFY(MeshService::pathAllowed(outside.filePath(u"secret"_s), {}));
+        std::fprintf(stderr, "[DCL 11] outside/secret empty folders ok\n"); std::fflush(stderr);
 
         Mock mock;
         if (!mock.start({}, mockDir.path()))
             QSKIP("node is not available");
+        std::fprintf(stderr, "[DCL 12] mock started on port %d\n", mock.info["port"_L1].toInt()); std::fflush(stderr);
         Store store(home.path());
         Session session(&store);
         MeshService mesh(&store, &session);
         store.setPref(u"meshSharing"_s, true);
         session.applyProfile(mock.profile());
         QTRY_VERIFY_WITH_TIMEOUT(mesh.registered(), 10'000);
+        std::fprintf(stderr, "[DCL 13] mesh registered ok\n"); std::fflush(stderr);
         mesh.setDeviceControl(true);
         store.setPref(u"meshFolders"_s, folders);
         store.setPref(u"meshAllowExec"_s, false);
@@ -1634,9 +1648,12 @@ private slots:
         // What is switched off isn't offered...
         QTRY_VERIFY_WITH_TIMEOUT(!mock.state()["registrations"_L1].toArray().last().toObject()
                                       ["capabilities"_L1].toVariant().toStringList().contains(u"exec"_s), 5000);
+        std::fprintf(stderr, "[DCL 14] exec not offered ok\n"); std::fflush(stderr);
         QVERIFY(mesh.capabilities().contains(u"read_file"_s));
+        std::fprintf(stderr, "[DCL 15] read_file offered ok\n"); std::fflush(stderr);
 
         const auto run = [&](const QString &id, const QString &name, const QJsonObject &params) {
+            std::fprintf(stderr, "[DCL run] emitting %s\n", qPrintable(id)); std::fflush(stderr);
             mock.emitEvent({{"kind"_L1, u"device_command"_s}, {"id"_L1, id},
                             {"deviceId"_L1, mesh.deviceId()}, {"name"_L1, name},
                             {"params"_L1, params}});
@@ -1649,18 +1666,24 @@ private slots:
                 return !found.isEmpty();
             };
             [&] { QTRY_VERIFY_WITH_TIMEOUT(look(), 5000); }();
+            std::fprintf(stderr, "[DCL run] got %s\n", qPrintable(id)); std::fflush(stderr);
             return found;
         };
         // ...and is refused if asked for anyway.
         QVERIFY(!run(u"c1"_s, u"exec"_s, {{"cmd"_L1, u"true"_s}})["ok"_L1].toBool());
+        std::fprintf(stderr, "[DCL 16] c1 exec refused ok\n"); std::fflush(stderr);
         QVERIFY(run(u"c2"_s, u"list_dir"_s, {{"path"_L1, allowed.path()}})["ok"_L1].toBool());
+        std::fprintf(stderr, "[DCL 17] c2 list_dir ok\n"); std::fflush(stderr);
         const QJsonObject refused = run(u"c3"_s, u"read_file"_s,
                                         {{"path"_L1, outside.filePath(u"secret"_s)}});
         QVERIFY(!refused["ok"_L1].toBool());
         QVERIFY(refused["message"_L1].toString().contains(u"outside the folders"_s));
+        std::fprintf(stderr, "[DCL 18] c3 read_file outside ok\n"); std::fflush(stderr);
         QVERIFY(!run(u"c4"_s, u"move"_s, {{"from"_L1, allowed.filePath(u"sub"_s)},
                                           {"to"_L1, outside.filePath(u"sub"_s)}})["ok"_L1].toBool());
+        std::fprintf(stderr, "[DCL 19] c4 move refused ok\n"); std::fflush(stderr);
         QVERIFY(QFileInfo::exists(allowed.filePath(u"sub"_s)));
+        std::fprintf(stderr, "[DCL 20] deviceControlLimits all passed!\n"); std::fflush(stderr);
     }
 
     void sealedBox()
@@ -2077,6 +2100,7 @@ int main(int argc, char *argv[])
 {
 #if defined(Q_OS_WIN)
     _dup2(_fileno(stderr), _fileno(stdout));
+    SetStdHandle(STD_OUTPUT_HANDLE, GetStdHandle(STD_ERROR_HANDLE));
 #else
     dup2(fileno(stderr), fileno(stdout));
 #endif

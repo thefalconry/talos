@@ -166,7 +166,9 @@ jobs:
             -DTALOS_BUILD_TESTS=ON
           cmake --build build
           export TALOS_DEBUG=1
-          ./build/talos_tests.exe -v2 2>&1
+          ./build/talos_tests.exe -v2 -o testlog.txt,txt 2>&1 || TEST_EXIT=$?
+          if [ -f testlog.txt ]; then cat testlog.txt; fi
+          if [ "${TEST_EXIT:-0}" -ne 0 ]; then exit $TEST_EXIT; fi
 
       - name: Package Windows Installer
         run: |
