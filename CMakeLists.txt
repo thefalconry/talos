@@ -136,7 +136,9 @@ if(APPLE AND NOT IOS)
 endif()
 if(ANDROID)
     # QtAndroidPrivate::startActivity, for the system speech recogniser.
-    find_package(Qt6 REQUIRED COMPONENTS CorePrivate)
+    if(NOT TARGET Qt6::CorePrivate)
+        find_package(Qt6 REQUIRED COMPONENTS CorePrivate)
+    endif()
     target_link_libraries(talos PRIVATE Qt6::CorePrivate)
 
     # Qt has no TLS of its own on Android: it loads these two at run time,
@@ -246,7 +248,11 @@ endif()
 # ── Tests ───────────────────────────────────────────────────────────────────
 if(TALOS_BUILD_TESTS AND TARGET Qt6::Test AND NOT ANDROID)
     enable_testing()
-    qt_add_executable(talos_tests tests/tst_core.cpp)
+    add_executable(talos_tests tests/tst_core.cpp)
+    set_target_properties(talos_tests PROPERTIES WIN32_EXECUTABLE FALSE)
+    if(MSVC)
+        target_link_options(talos_tests PRIVATE /SUBSYSTEM:CONSOLE)
+    endif()
     target_link_libraries(talos_tests PRIVATE talos_core Qt6::Test)
     target_compile_definitions(talos_tests PRIVATE
         TALOS_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
