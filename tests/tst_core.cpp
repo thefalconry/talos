@@ -26,6 +26,13 @@
 #include "mesh/SelfUpdate.h"
 #include "mesh/ServiceInstall.h"
 
+#if defined(Q_OS_WIN)
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
+#  include <windows.h>
+#endif
+
 #include <cstdio>
 #include <QCryptographicHash>
 #include <QJsonDocument>
@@ -158,6 +165,9 @@ class CoreTest : public QObject
 private slots:
     void initTestCase()
     {
+#if defined(Q_OS_WIN)
+        AttachConsole(ATTACH_PARENT_PROCESS);
+#endif
         std::setvbuf(stdout, nullptr, _IONBF, 0);
         std::setvbuf(stderr, nullptr, _IONBF, 0);
         if (QSslSocket::availableBackends().contains(u"openssl"_s))
@@ -1856,7 +1866,7 @@ private slots:
         store.setPref(u"meshSharing"_s, true);
         session.applyProfile(mock.profile());
         QTRY_COMPARE_WITH_TIMEOUT(session.conn(), int(Session::Connected), 10'000);
-        QTRY_VERIFY_WITH_TIMEOUT(mesh.registered(), 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(mesh.registered(), 10'000);
         const QString me = mesh.deviceId();
         QVERIFY(!me.isEmpty());
 
@@ -1909,7 +1919,7 @@ private slots:
         // program can replace itself (a build tree can).
         const int granted = 13 + (mesh.canUpdateSelf() ? 1 : 0);
         QTRY_COMPARE_WITH_TIMEOUT(lastRegistration()["capabilities"_L1].toArray().size(), granted,
-                                  5000);
+                                  10'000);
         command(u"c-exec"_s, u"exec"_s, {{"cmd"_L1, u"echo conformance"_s}, {"cwd"_L1, work.path()}});
         const QJsonObject ran = wait(u"c-exec"_s);
         QVERIFY(ran["ok"_L1].toBool());

@@ -248,7 +248,7 @@ endif()
 # ── Tests ───────────────────────────────────────────────────────────────────
 if(TALOS_BUILD_TESTS AND TARGET Qt6::Test AND NOT ANDROID)
     enable_testing()
-    qt_add_executable(talos_tests tests/tst_core.cpp)
+    add_executable(talos_tests tests/tst_core.cpp)
     set_target_properties(talos_tests PROPERTIES WIN32_EXECUTABLE FALSE)
     target_link_libraries(talos_tests PRIVATE talos_core Qt6::Test)
     target_compile_definitions(talos_tests PRIVATE
