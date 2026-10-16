@@ -30,6 +30,7 @@
 #include <QJsonDocument>
 #include <QProcess>
 #include <QSignalSpy>
+#include <QSslSocket>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTest>
@@ -154,6 +155,12 @@ class CoreTest : public QObject
     Q_OBJECT
 
 private slots:
+    void initTestCase()
+    {
+        if (QSslSocket::availableBackends().contains(u"openssl"_s))
+            QSslSocket::setActiveBackend(u"openssl"_s);
+    }
+
     // ── Pure logic ──────────────────────────────────────────────────────────
 
     void hostInput_data()
@@ -723,8 +730,13 @@ private slots:
         // A failing command still carries its output and exit code back.
         CommandOutcome o;
         bool done = false;
+#if defined(Q_OS_WIN)
+        exec.exec(u"echo out & echo err 1>&2 & exit 3"_s, tmp.path(), 5000,
+                  [&](const CommandOutcome &r) { o = r; done = true; });
+#else
         exec.exec(u"echo out; echo err 1>&2; exit 3"_s, tmp.path(), 5000,
                   [&](const CommandOutcome &r) { o = r; done = true; });
+#endif
         QTRY_VERIFY_WITH_TIMEOUT(done, 10'000);
         QVERIFY(!o.ok);
         QCOMPARE(o.data["exitCode"_L1].toInt(), 3);
@@ -732,7 +744,11 @@ private slots:
         QCOMPARE(o.data["stderr"_L1].toString().trimmed(), u"err"_s);
 
         done = false;
+#if defined(Q_OS_WIN)
+        exec.exec(u"ping -n 30 127.0.0.1 >nul"_s, {}, 1000, [&](const CommandOutcome &r) { o = r; done = true; });
+#else
         exec.exec(u"sleep 30"_s, {}, 1000, [&](const CommandOutcome &r) { o = r; done = true; });
+#endif
         QTRY_VERIFY_WITH_TIMEOUT(done, 10'000);
         QVERIFY(!o.ok);
         QVERIFY(o.data["stderr"_L1].toString().contains(u"timeout"_s));

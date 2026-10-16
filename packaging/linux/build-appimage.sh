@@ -51,6 +51,13 @@ fi
 
 export PATH="$tools_dir:$PATH"
 export QML_SOURCES_PATHS="${QML_SOURCES_PATHS:-$root/qml:$root/src}"
+# Provide dummy qmldir for Talos.Native so linuxdeploy-plugin-qt resolves it
+mkdir -p "$work/qml_modules/Talos/Native"
+cat << 'EOF' > "$work/qml_modules/Talos/Native/qmldir"
+module Talos.Native
+typeinfo plugins.qmltypes
+EOF
+export QML_MODULES_PATHS="$work/qml_modules:${QML_MODULES_PATHS:-}"
 if [[ -n "${QT_ROOT_DIR:-}" ]]; then
     export QT_DIR="$QT_ROOT_DIR"
     export QMAKE="$QT_ROOT_DIR/bin/qmake"

@@ -65,7 +65,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build cmake libgl1-mesa-dev libxkbcommon-dev libx11-xcb1 libglu1-mesa-dev libxcb-cursor0 libpulse-dev libasound2-dev file curl
+          sudo apt-get install -y ninja-build cmake libgl1-mesa-dev libxkbcommon-dev libx11-xcb1 libglu1-mesa-dev libxcb-cursor0 libpulse-dev libasound2-dev file curl libspeechd-dev
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
@@ -156,6 +156,11 @@ jobs:
 
       - name: Build and Test
         run: |
+          if [ -d "/c/Program Files/OpenSSL/bin" ]; then
+            export PATH="/c/Program Files/OpenSSL/bin:$PATH"
+          elif [ -d "/c/Program Files/OpenSSL-Win64/bin" ]; then
+            export PATH="/c/Program Files/OpenSSL-Win64/bin:$PATH"
+          fi
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DTALOS_BUILD_TESTS=ON
@@ -172,6 +177,14 @@ jobs:
           
           # Deploy Qt dependencies
           windeployqt --qmldir qml "$STAGE/bin/talos.exe"
+
+          if [ -d "/c/Program Files/OpenSSL/bin" ]; then
+            cp "/c/Program Files/OpenSSL/bin/libcrypto"* "$STAGE/bin/" 2>/dev/null || true
+            cp "/c/Program Files/OpenSSL/bin/libssl"* "$STAGE/bin/" 2>/dev/null || true
+          elif [ -d "/c/Program Files/OpenSSL-Win64/bin" ]; then
+            cp "/c/Program Files/OpenSSL-Win64/bin/libcrypto"* "$STAGE/bin/" 2>/dev/null || true
+            cp "/c/Program Files/OpenSSL-Win64/bin/libssl"* "$STAGE/bin/" 2>/dev/null || true
+          fi
 
           # Add Inno Setup to PATH
           if [ -d "/c/Program Files (x86)/Inno Setup 6" ]; then
@@ -216,6 +229,7 @@ jobs:
 
       - name: Run tests
         run: |
+          export DYLD_FALLBACK_LIBRARY_PATH="$(brew --prefix openssl@3)/lib:${DYLD_FALLBACK_LIBRARY_PATH:-}"
           cmake -S . -B build-tests -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DTALOS_BUILD_TESTS=ON
@@ -260,6 +274,7 @@ jobs:
 
       - name: Build DMG
         run: |
+          export DYLD_FALLBACK_LIBRARY_PATH="$(brew --prefix openssl@3)/lib:${DYLD_FALLBACK_LIBRARY_PATH:-}"
           ./packaging/macos/build-dmg.sh
 
       - name: Upload macOS DMG

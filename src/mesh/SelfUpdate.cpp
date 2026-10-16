@@ -20,15 +20,14 @@ namespace {
 // The marker itself. `used` keeps the linker from discarding it.
 #if defined(__GNUC__)
 __attribute__((used))
-#elif defined(_MSC_VER)
-#pragma comment(linker, "/include:kBuildMarker")
 #endif
 extern const char kBuildMarker[] = "TALOS-BUILD-" "VERSION:" TALOS_VERSION ";";
 
 const QByteArray &markerPrefix()
 {
     static const QByteArray prefix = QByteArray("TALOS-BUILD-") + QByteArray("VERSION:");
-    (void)kBuildMarker;
+    volatile const char *p = kBuildMarker;
+    (void)p;
     return prefix;
 }
 
