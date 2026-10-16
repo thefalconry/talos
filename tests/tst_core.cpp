@@ -1591,56 +1591,54 @@ private slots:
 
     void deviceControlLimits()
     {
-        std::fprintf(stderr, "[DCL 0] start\n"); std::fflush(stderr);
         QTemporaryDir allowed, outside, home, mockDir;
         QVERIFY(QDir(allowed.path()).mkpath(u"sub"_s));
-        std::fprintf(stderr, "[DCL 1] mkpath sub ok\n"); std::fflush(stderr);
         {
             QFile secret(outside.filePath(u"secret"_s));
             QVERIFY(secret.open(QIODevice::WriteOnly));
         }
-        std::fprintf(stderr, "[DCL 2] secret ok\n"); std::fflush(stderr);
         const QStringList folders{allowed.path()};
         // A link inside the allowed folder that leads out of it.
-        const bool linked = QFile::link(outside.path(), allowed.filePath(u"escape"_s));
-        std::fprintf(stderr, "[DCL 3] linked=%d\n", int(linked)); std::fflush(stderr);
 #if defined(Q_OS_WIN)
-        if (linked)
-#else
-        QVERIFY(linked);
-#endif
-        {
+#  ifndef SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
+#    define SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE 0x2
+#  endif
+        const QString linkNative = QDir::toNativeSeparators(allowed.filePath(u"escape"_s));
+        const QString targetNative = QDir::toNativeSeparators(outside.path());
+        const bool linked = CreateSymbolicLinkW(reinterpret_cast<LPCWSTR>(linkNative.utf16()),
+                                                reinterpret_cast<LPCWSTR>(targetNative.utf16()),
+                                                SYMBOLIC_LINK_FLAG_DIRECTORY | SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE)
+                         || CreateSymbolicLinkW(reinterpret_cast<LPCWSTR>(linkNative.utf16()),
+                                                reinterpret_cast<LPCWSTR>(targetNative.utf16()),
+                                                SYMBOLIC_LINK_FLAG_DIRECTORY);
+        if (linked) {
             QVERIFY(!MeshService::pathAllowed(allowed.filePath(u"escape/secret"_s), folders));
-            std::fprintf(stderr, "[DCL 4] escape/secret ok\n"); std::fflush(stderr);
             QVERIFY(!MeshService::pathAllowed(allowed.filePath(u"escape/not-yet"_s), folders));
-            std::fprintf(stderr, "[DCL 5] escape/not-yet ok\n"); std::fflush(stderr);
         }
+#else
+        const bool linked = QFile::link(outside.path(), allowed.filePath(u"escape"_s));
+        QVERIFY(linked);
+        QVERIFY(!MeshService::pathAllowed(allowed.filePath(u"escape/secret"_s), folders));
+        QVERIFY(!MeshService::pathAllowed(allowed.filePath(u"escape/not-yet"_s), folders));
+#endif
 
         QVERIFY(MeshService::pathAllowed(allowed.filePath(u"sub/new.txt"_s), folders));
-        std::fprintf(stderr, "[DCL 6] sub/new.txt ok\n"); std::fflush(stderr);
         QVERIFY(MeshService::pathAllowed(allowed.path(), folders));
-        std::fprintf(stderr, "[DCL 7] allowed.path ok\n"); std::fflush(stderr);
         QVERIFY(!MeshService::pathAllowed(outside.filePath(u"secret"_s), folders));
-        std::fprintf(stderr, "[DCL 8] outside/secret ok\n"); std::fflush(stderr);
         QVERIFY(!MeshService::pathAllowed(allowed.filePath(u"../x"_s), folders));
-        std::fprintf(stderr, "[DCL 9] ../x ok\n"); std::fflush(stderr);
         // A sibling whose name merely starts the same way is not inside.
         QVERIFY(!MeshService::pathAllowed(allowed.path() + u"-other/file"_s, folders));
-        std::fprintf(stderr, "[DCL 10] -other/file ok\n"); std::fflush(stderr);
         QVERIFY(MeshService::pathAllowed(outside.filePath(u"secret"_s), {}));
-        std::fprintf(stderr, "[DCL 11] outside/secret empty folders ok\n"); std::fflush(stderr);
 
         Mock mock;
         if (!mock.start({}, mockDir.path()))
             QSKIP("node is not available");
-        std::fprintf(stderr, "[DCL 12] mock started on port %d\n", mock.info["port"_L1].toInt()); std::fflush(stderr);
         Store store(home.path());
         Session session(&store);
         MeshService mesh(&store, &session);
         store.setPref(u"meshSharing"_s, true);
         session.applyProfile(mock.profile());
         QTRY_VERIFY_WITH_TIMEOUT(mesh.registered(), 10'000);
-        std::fprintf(stderr, "[DCL 13] mesh registered ok\n"); std::fflush(stderr);
         mesh.setDeviceControl(true);
         store.setPref(u"meshFolders"_s, folders);
         store.setPref(u"meshAllowExec"_s, false);
@@ -1648,12 +1646,9 @@ private slots:
         // What is switched off isn't offered...
         QTRY_VERIFY_WITH_TIMEOUT(!mock.state()["registrations"_L1].toArray().last().toObject()
                                       ["capabilities"_L1].toVariant().toStringList().contains(u"exec"_s), 5000);
-        std::fprintf(stderr, "[DCL 14] exec not offered ok\n"); std::fflush(stderr);
         QVERIFY(mesh.capabilities().contains(u"read_file"_s));
-        std::fprintf(stderr, "[DCL 15] read_file offered ok\n"); std::fflush(stderr);
 
         const auto run = [&](const QString &id, const QString &name, const QJsonObject &params) {
-            std::fprintf(stderr, "[DCL run] emitting %s\n", qPrintable(id)); std::fflush(stderr);
             mock.emitEvent({{"kind"_L1, u"device_command"_s}, {"id"_L1, id},
                             {"deviceId"_L1, mesh.deviceId()}, {"name"_L1, name},
                             {"params"_L1, params}});
@@ -1666,24 +1661,18 @@ private slots:
                 return !found.isEmpty();
             };
             [&] { QTRY_VERIFY_WITH_TIMEOUT(look(), 5000); }();
-            std::fprintf(stderr, "[DCL run] got %s\n", qPrintable(id)); std::fflush(stderr);
             return found;
         };
         // ...and is refused if asked for anyway.
         QVERIFY(!run(u"c1"_s, u"exec"_s, {{"cmd"_L1, u"true"_s}})["ok"_L1].toBool());
-        std::fprintf(stderr, "[DCL 16] c1 exec refused ok\n"); std::fflush(stderr);
         QVERIFY(run(u"c2"_s, u"list_dir"_s, {{"path"_L1, allowed.path()}})["ok"_L1].toBool());
-        std::fprintf(stderr, "[DCL 17] c2 list_dir ok\n"); std::fflush(stderr);
         const QJsonObject refused = run(u"c3"_s, u"read_file"_s,
                                         {{"path"_L1, outside.filePath(u"secret"_s)}});
         QVERIFY(!refused["ok"_L1].toBool());
         QVERIFY(refused["message"_L1].toString().contains(u"outside the folders"_s));
-        std::fprintf(stderr, "[DCL 18] c3 read_file outside ok\n"); std::fflush(stderr);
         QVERIFY(!run(u"c4"_s, u"move"_s, {{"from"_L1, allowed.filePath(u"sub"_s)},
                                           {"to"_L1, outside.filePath(u"sub"_s)}})["ok"_L1].toBool());
-        std::fprintf(stderr, "[DCL 19] c4 move refused ok\n"); std::fflush(stderr);
         QVERIFY(QFileInfo::exists(allowed.filePath(u"sub"_s)));
-        std::fprintf(stderr, "[DCL 20] deviceControlLimits all passed!\n"); std::fflush(stderr);
     }
 
     void sealedBox()
@@ -1888,37 +1877,29 @@ private slots:
 
     void meshDevice()
     {
-        std::fprintf(stderr, "[STEP 1] meshDevice start\n"); std::fflush(stderr);
         QTemporaryDir home, mockDir, work;
         Mock mock;
         if (!mock.start({}, mockDir.path()))
             QSKIP("node is not available");
-        std::fprintf(stderr, "[STEP 2] mock started on port %d\n", mock.info["port"_L1].toInt()); std::fflush(stderr);
         Store store(home.path());
         Session session(&store);
         MeshService mesh(&store, &session);
         QSignalSpy rings(&mesh, &MeshService::ringRequested);
         store.setPref(u"meshSharing"_s, true);
         session.applyProfile(mock.profile());
-        std::fprintf(stderr, "[STEP 3] profile applied\n"); std::fflush(stderr);
         QTRY_COMPARE_WITH_TIMEOUT(session.conn(), int(Session::Connected), 10'000);
-        std::fprintf(stderr, "[STEP 4] session connected\n"); std::fflush(stderr);
         QTRY_VERIFY_WITH_TIMEOUT(mesh.registered(), 10'000);
-        std::fprintf(stderr, "[STEP 5] mesh registered\n"); std::fflush(stderr);
         const QString me = mesh.deviceId();
         QVERIFY(!me.isEmpty());
 
         const auto lastRegistration = [&] {
             return mock.state()["registrations"_L1].toArray().last().toObject();
         };
-        std::fprintf(stderr, "[STEP 6] checking lastRegistration\n"); std::fflush(stderr);
         QCOMPARE(lastRegistration()["id"_L1].toString(), me);
         QCOMPARE(lastRegistration()["capabilities"_L1].toArray().size(), 3);
-        std::fprintf(stderr, "[STEP 7] lastRegistration checked\n"); std::fflush(stderr);
 
         const auto command = [&](const QString &id, const QString &name, const QJsonObject &params,
                                  const QString &target = {}) {
-            std::fprintf(stderr, "[CMD] emitting %s\n", qPrintable(id)); std::fflush(stderr);
             mock.emitEvent({{"kind"_L1, u"device_command"_s}, {"id"_L1, id},
                             {"deviceId"_L1, target.isEmpty() ? me : target},
                             {"name"_L1, name}, {"params"_L1, params}});
@@ -1931,9 +1912,7 @@ private slots:
             return QJsonObject();
         };
         const auto wait = [&](const QString &id) {
-            std::fprintf(stderr, "[WAIT] waiting for %s\n", qPrintable(id)); std::fflush(stderr);
             [&] { QTRY_VERIFY_WITH_TIMEOUT(!result(id).isEmpty(), 10'000); }();
-            std::fprintf(stderr, "[WAIT] got %s\n", qPrintable(id)); std::fflush(stderr);
             return result(id);
         };
 
@@ -1943,38 +1922,31 @@ private slots:
         QVERIFY(status["ok"_L1].toBool());
         for (const char *key : {"name", "platform", "appVersion"})
             QVERIFY(status["data"_L1].toObject().contains(QLatin1StringView(key)));
-        std::fprintf(stderr, "[STEP 8] c-status done\n"); std::fflush(stderr);
         command(u"c-ring"_s, u"ring"_s, {{"message"_L1, u"where are you"_s}});
         QVERIFY(wait(u"c-ring"_s)["ok"_L1].toBool());
         QCOMPARE(rings.size(), 1);
         QCOMPARE(rings.first().first().toString(), u"where are you"_s);
-        std::fprintf(stderr, "[STEP 9] c-ring done\n"); std::fflush(stderr);
 
         // Shell access is refused until the user grants it for this bridge.
         command(u"c-denied"_s, u"exec"_s, {{"cmd"_L1, u"echo no"_s}});
         const QJsonObject denied = wait(u"c-denied"_s);
         QVERIFY(!denied["ok"_L1].toBool());
         QVERIFY(denied["message"_L1].toString().contains(u"disabled"_s));
-        std::fprintf(stderr, "[STEP 10] c-denied done\n"); std::fflush(stderr);
 
         // A command addressed to another device is none of ours.
         command(u"c-other"_s, u"status"_s, {}, u"dev_someone_else"_s);
 
-        std::fprintf(stderr, "[STEP 11] enabling device control\n"); std::fflush(stderr);
         mesh.setDeviceControl(true);
         // The file commands and transfers, plus update_node where this
         // program can replace itself (a build tree can).
         const int granted = 13 + (mesh.canUpdateSelf() ? 1 : 0);
-        std::fprintf(stderr, "[STEP 12] waiting for granted caps=%d\n", granted); std::fflush(stderr);
         QTRY_COMPARE_WITH_TIMEOUT(lastRegistration()["capabilities"_L1].toArray().size(), granted,
                                   10'000);
-        std::fprintf(stderr, "[STEP 13] granted caps matched, running c-exec\n"); std::fflush(stderr);
         command(u"c-exec"_s, u"exec"_s, {{"cmd"_L1, u"echo conformance"_s}, {"cwd"_L1, work.path()}});
         const QJsonObject ran = wait(u"c-exec"_s);
         QVERIFY(ran["ok"_L1].toBool());
         QCOMPARE(ran["data"_L1].toObject()["stdout"_L1].toString().trimmed(), u"conformance"_s);
         QCOMPARE(ran["deviceId"_L1].toString(), me);
-        std::fprintf(stderr, "[STEP 14] c-exec passed\n"); std::fflush(stderr);
 
         // Local approval can refuse, and the refusal reaches the daemon.
         mesh.approver = [](const QString &, const QString &, auto decide) {
@@ -1984,16 +1956,13 @@ private slots:
         QVERIFY(!wait(u"c-refused"_s)["ok"_L1].toBool());
         QVERIFY(!QFile::exists(work.filePath(u"never"_s)));
         mesh.approver = nullptr;
-        std::fprintf(stderr, "[STEP 15] c-refused passed\n"); std::fflush(stderr);
 
         command(u"c-unknown"_s, u"install_apk"_s, {{"path"_L1, u"/x.apk"_s}});
         QVERIFY(!wait(u"c-unknown"_s)["ok"_L1].toBool());
-        std::fprintf(stderr, "[STEP 16] c-unknown passed\n"); std::fflush(stderr);
 
         // update_node with what the daemon would pick by default, a
         // talon-node binary: verified, recognised as not ours, refused.
         if (mesh.canUpdateSelf()) {
-            std::fprintf(stderr, "[STEP 17] update_node start\n"); std::fflush(stderr);
             const QString node = work.filePath(u"talon-node"_s);
             QFile fake(node);
             QVERIFY(fake.open(QIODevice::WriteOnly));
@@ -2009,13 +1978,11 @@ private slots:
                      qPrintable(update["message"_L1].toString()));
             QCOMPARE(selfupdate::versionOf(QCoreApplication::applicationFilePath()),
                      QStringLiteral(TALOS_VERSION));
-            std::fprintf(stderr, "[STEP 17] update_node passed\n"); std::fflush(stderr);
         }
         // Screen control is off unless the app supplies it and the user
         // turned it on.
         command(u"c-screen"_s, u"computer"_s, {{"action"_L1, u"screenshot"_s}});
         QVERIFY(!wait(u"c-screen"_s)["ok"_L1].toBool());
-        std::fprintf(stderr, "[STEP 18] c-screen passed\n"); std::fflush(stderr);
 
         // Streamed transfers, checked by digest both ways.
         const QByteArray body = "conformance\n";
@@ -2025,7 +1992,6 @@ private slots:
                                                        {"body"_L1, QString::fromUtf8(body)}}}});
         mock.emitEvent({{"__transfer"_L1, QJsonObject{{"token"_L1, u"tok_up"_s}}}});
         const QString dest = work.filePath(u"sub/downloaded.bin"_s);
-        std::fprintf(stderr, "[STEP 19] c-down start dest=%s\n", qPrintable(dest)); std::fflush(stderr);
         command(u"c-down"_s, u"download_file"_s,
                 {{"token"_L1, u"tok_dn"_s}, {"path"_L1, dest}, {"sha256"_L1, digest}});
         const QJsonObject down = wait(u"c-down"_s);
@@ -2035,20 +2001,16 @@ private slots:
         QVERIFY(got.open(QIODevice::ReadOnly));
         QCOMPARE(got.readAll(), body);
         QVERIFY(!QFile::exists(dest + u".part"_s));
-        std::fprintf(stderr, "[STEP 19] c-down passed\n"); std::fflush(stderr);
 
         // A body that doesn't match the promised digest is discarded.
         mock.emitEvent({{"__transfer"_L1, QJsonObject{{"token"_L1, u"tok_bad"_s},
                                                        {"body"_L1, u"tampered"_s}}}});
         const QString bad = work.filePath(u"bad.bin"_s);
-        std::fprintf(stderr, "[STEP 20] c-bad start bad=%s\n", qPrintable(bad)); std::fflush(stderr);
         command(u"c-bad"_s, u"download_file"_s,
                 {{"token"_L1, u"tok_bad"_s}, {"path"_L1, bad}, {"sha256"_L1, digest}});
         QVERIFY(!wait(u"c-bad"_s)["ok"_L1].toBool());
         QVERIFY(!QFile::exists(bad) && !QFile::exists(bad + u".part"_s));
-        std::fprintf(stderr, "[STEP 20] c-bad passed\n"); std::fflush(stderr);
 
-        std::fprintf(stderr, "[STEP 21] c-up start\n"); std::fflush(stderr);
         command(u"c-up"_s, u"upload_file"_s, {{"token"_L1, u"tok_up"_s}, {"path"_L1, dest}});
         const QJsonObject up = wait(u"c-up"_s);
         QVERIFY2(up["ok"_L1].toBool(), qPrintable(up["message"_L1].toString()));
@@ -2056,28 +2018,23 @@ private slots:
         const QJsonObject received = mock.state()["transfers"_L1].toArray().last().toObject();
         QCOMPARE(received["sha256"_L1].toString(), digest);
         QCOMPARE(received["deviceId"_L1].toString(), me);
-        std::fprintf(stderr, "[STEP 21] c-up passed\n"); std::fflush(stderr);
 
         QVERIFY(result(u"c-other"_s).isEmpty());
 
         // Everything that ran is in the audit trail, newest first, and the
         // trail never holds a transfer token.
-        std::fprintf(stderr, "[STEP 22] checking audit\n"); std::fflush(stderr);
         const QVariantList audit = mesh.audit();
         QVERIFY(audit.size() >= 8);
         QCOMPARE(audit.first().toMap().value(u"name"_s).toString(), u"upload_file"_s);
         QFile trail(home.filePath(u"data/mesh-audit.jsonl"_s));
         QVERIFY(trail.open(QIODevice::ReadOnly));
         QVERIFY(!trail.readAll().contains("tok_"));
-        std::fprintf(stderr, "[STEP 22] audit passed\n"); std::fflush(stderr);
 
         // Turning sharing off stops answering.
-        std::fprintf(stderr, "[STEP 23] turning sharing off\n"); std::fflush(stderr);
         store.setPref(u"meshSharing"_s, false);
         command(u"c-off"_s, u"status"_s, {});
         QTest::qWait(500);
         QVERIFY(result(u"c-off"_s).isEmpty());
-        std::fprintf(stderr, "[STEP 23] c-off passed, meshDevice done!\n"); std::fflush(stderr);
     }
 
 private:
