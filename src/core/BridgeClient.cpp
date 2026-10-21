@@ -65,6 +65,10 @@ bool enableLegacyCiphers()
 bool readPkcs12(const QByteArray &p12, const QString &password, QSslKey *key,
                 QSslCertificate *cert, QList<QSslCertificate> *chain)
 {
+    if (QSslSocket::availableBackends().contains(u"openssl"_s)
+        && QSslSocket::activeBackend() != "openssl"_L1) {
+        QSslSocket::setActiveBackend(u"openssl"_s);
+    }
     const auto attempt = [&] {
         QBuffer buf;
         buf.setData(p12);

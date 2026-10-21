@@ -28,6 +28,7 @@
 #include <QQmlExpression>
 #include <QQuickStyle>
 #include <QQuickWindow>
+#include <QSslSocket>
 #include <QTextStream>
 #include <QTimer>
 
@@ -201,6 +202,9 @@ int runWithoutDisplay(int argc, char *argv[], bool serviceCommand)
 
 int main(int argc, char *argv[])
 {
+    if (QSslSocket::availableBackends().contains(u"openssl"_s))
+        QSslSocket::setActiveBackend(u"openssl"_s);
+
     for (int i = 1; i < argc; ++i) {
         if (qstrcmp(argv[i], "--headless") == 0)
             return runWithoutDisplay(argc, argv, false);
