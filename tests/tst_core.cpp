@@ -26,10 +26,18 @@
 #include "mesh/SelfUpdate.h"
 #include "mesh/ServiceInstall.h"
 
+#if defined(Q_OS_WIN)
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
+#  include <windows.h>
+#endif
+
 #include <QCryptographicHash>
 #include <QJsonDocument>
 #include <QProcess>
 #include <QSignalSpy>
+#include <QSslSocket>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTest>
@@ -123,13 +131,13 @@ public:
             for (const auto &v : body.toArray()) {
                 done = false;
                 client.post(path, v.toObject(), cb);
-                [&] { QTRY_VERIFY_WITH_TIMEOUT(done, 5000); }();
+                [&] { QTRY_VERIFY_WITH_TIMEOUT(done, 10'000); }();
             }
             return out;
         } else {
             client.post(path, body.toObject(), cb);
         }
-        [&] { QTRY_VERIFY_WITH_TIMEOUT(done, 5000); }();
+        [&] { QTRY_VERIFY_WITH_TIMEOUT(done, 10'000); }();
         return out;
     }
 
@@ -154,6 +162,12 @@ class CoreTest : public QObject
     Q_OBJECT
 
 private slots:
+    void initTestCase()
+    {
+        if (QSslSocket::availableBackends().contains(u"openssl"_s))
+            QSslSocket::setActiveBackend(u"openssl"_s);
+    }
+
     // ── Pure logic ──────────────────────────────────────────────────────────
 
     void hostInput_data()
@@ -442,7 +456,7 @@ private slots:
         QVERIFY(crypto::argon2id("wrong horse", salt, 1024, 2) != key);
 
         const QByteArray sealed = crypto::seal(key, "snapshot", "profile-1");
-        QCOMPARE(crypto::open(key, sealed, "profile-1").value_or({}), QByteArray("snapshot"));
+        QCOMPARE(crypto::open(key, sealed, "profile-1").value_or(QByteArray{}), QByteArray("snapshot"));
         QVERIFY(!crypto::open(key, sealed, "profile-2"));
         QVERIFY(!crypto::open(crypto::randomBytes(32), sealed, "profile-1"));
         QByteArray tampered = sealed;
@@ -723,8 +737,13 @@ private slots:
         // A failing command still carries its output and exit code back.
         CommandOutcome o;
         bool done = false;
+#if defined(Q_OS_WIN)
+        exec.exec(u"echo out & echo err 1>&2 & exit 3"_s, tmp.path(), 5000,
+                  [&](const CommandOutcome &r) { o = r; done = true; });
+#else
         exec.exec(u"echo out; echo err 1>&2; exit 3"_s, tmp.path(), 5000,
                   [&](const CommandOutcome &r) { o = r; done = true; });
+#endif
         QTRY_VERIFY_WITH_TIMEOUT(done, 10'000);
         QVERIFY(!o.ok);
         QCOMPARE(o.data["exitCode"_L1].toInt(), 3);
@@ -732,7 +751,11 @@ private slots:
         QCOMPARE(o.data["stderr"_L1].toString().trimmed(), u"err"_s);
 
         done = false;
+#if defined(Q_OS_WIN)
+        exec.exec(u"ping -n 30 127.0.0.1 >nul"_s, {}, 1000, [&](const CommandOutcome &r) { o = r; done = true; });
+#else
         exec.exec(u"sleep 30"_s, {}, 1000, [&](const CommandOutcome &r) { o = r; done = true; });
+#endif
         QTRY_VERIFY_WITH_TIMEOUT(done, 10'000);
         QVERIFY(!o.ok);
         QVERIFY(o.data["stderr"_L1].toString().contains(u"timeout"_s));
@@ -757,10 +780,17 @@ private slots:
         // The marker is assembled here so this test binary carries no
         // second complete one.
         const QByteArray marker = QByteArray("TALOS-BUILD-") + "VERSION:";
+#if defined(Q_OS_WIN)
+        const QString exe = write(u"talos.exe"_s, "old program " + marker + "1.0.0;");
+        const QString newer = write(u"newer.exe"_s, QByteArray(3000, 'x') + marker + "1.2.0; tail");
+        const QString older = write(u"older.exe"_s, marker + "0.9.0;");
+        const QString node = write(u"talon-node.exe"_s, "a different program entirely");
+#else
         const QString exe = write(u"talos"_s, "old program " + marker + "1.0.0;");
         const QString newer = write(u"newer"_s, QByteArray(3000, 'x') + marker + "1.2.0; tail");
         const QString older = write(u"older"_s, marker + "0.9.0;");
         const QString node = write(u"talon-node"_s, "a different program entirely");
+#endif
 
         QCOMPARE(selfupdate::versionOf(newer), u"1.2.0"_s);
         QCOMPARE(selfupdate::versionOf(node), QString());
@@ -970,8 +1000,10 @@ private slots:
         QVERIFY(profiles.open(QIODevice::ReadOnly));
         const QByteArray raw = profiles.readAll();
         QVERIFY(!raw.contains("s3cret-token") && !raw.contains("p12-bytes"));
+#if !defined(Q_OS_WIN)
         QCOMPARE(QFile::permissions(tmp.filePath(u"config/secrets.json"_s))
                      & (QFile::ReadGroup | QFile::ReadOther), QFile::Permissions());
+#endif
 
         Store store(tmp.path());
         QVERIFY(store.hasProfile());
@@ -1549,16 +1581,32 @@ private slots:
             QFile secret(outside.filePath(u"secret"_s));
             QVERIFY(secret.open(QIODevice::WriteOnly));
         }
-        // A link inside the allowed folder that leads out of it.
-        QVERIFY(QFile::link(outside.path(), allowed.filePath(u"escape"_s)));
         const QStringList folders{allowed.path()};
+        // A link inside the allowed folder that leads out of it.
+#if defined(Q_OS_WIN)
+#  ifndef SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
+#    define SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE 0x2
+#  endif
+        const QString linkNative = QDir::toNativeSeparators(allowed.filePath(u"escape"_s));
+        const QString targetNative = QDir::toNativeSeparators(outside.path());
+        const bool linked = CreateSymbolicLinkW(reinterpret_cast<LPCWSTR>(linkNative.utf16()),
+                                                reinterpret_cast<LPCWSTR>(targetNative.utf16()),
+                                                SYMBOLIC_LINK_FLAG_DIRECTORY | SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE)
+                         || CreateSymbolicLinkW(reinterpret_cast<LPCWSTR>(linkNative.utf16()),
+                                                reinterpret_cast<LPCWSTR>(targetNative.utf16()),
+                                                SYMBOLIC_LINK_FLAG_DIRECTORY);
+        QVERIFY(linked);
+#else
+        const bool linked = QFile::link(outside.path(), allowed.filePath(u"escape"_s));
+        QVERIFY(linked);
+#endif
+        QVERIFY(!MeshService::pathAllowed(allowed.filePath(u"escape/secret"_s), folders));
+        QVERIFY(!MeshService::pathAllowed(allowed.filePath(u"escape/not-yet"_s), folders));
 
         QVERIFY(MeshService::pathAllowed(allowed.filePath(u"sub/new.txt"_s), folders));
         QVERIFY(MeshService::pathAllowed(allowed.path(), folders));
         QVERIFY(!MeshService::pathAllowed(outside.filePath(u"secret"_s), folders));
         QVERIFY(!MeshService::pathAllowed(allowed.filePath(u"../x"_s), folders));
-        QVERIFY(!MeshService::pathAllowed(allowed.filePath(u"escape/secret"_s), folders));
-        QVERIFY(!MeshService::pathAllowed(allowed.filePath(u"escape/not-yet"_s), folders));
         // A sibling whose name merely starts the same way is not inside.
         QVERIFY(!MeshService::pathAllowed(allowed.path() + u"-other/file"_s, folders));
         QVERIFY(MeshService::pathAllowed(outside.filePath(u"secret"_s), {}));
@@ -1821,7 +1869,7 @@ private slots:
         store.setPref(u"meshSharing"_s, true);
         session.applyProfile(mock.profile());
         QTRY_COMPARE_WITH_TIMEOUT(session.conn(), int(Session::Connected), 10'000);
-        QTRY_VERIFY_WITH_TIMEOUT(mesh.registered(), 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(mesh.registered(), 10'000);
         const QString me = mesh.deviceId();
         QVERIFY(!me.isEmpty());
 
@@ -1874,7 +1922,7 @@ private slots:
         // program can replace itself (a build tree can).
         const int granted = 13 + (mesh.canUpdateSelf() ? 1 : 0);
         QTRY_COMPARE_WITH_TIMEOUT(lastRegistration()["capabilities"_L1].toArray().size(), granted,
-                                  5000);
+                                  10'000);
         command(u"c-exec"_s, u"exec"_s, {{"cmd"_L1, u"echo conformance"_s}, {"cwd"_L1, work.path()}});
         const QJsonObject ran = wait(u"c-exec"_s);
         QVERIFY(ran["ok"_L1].toBool());

@@ -178,7 +178,13 @@ bool MeshService::pathAllowed(const QString &path, const QStringList &folders)
         const QString root = QFileInfo(folder).canonicalFilePath();
         if (root.isEmpty())
             continue;
-        if (real == root || real.startsWith(root.endsWith(u'/') ? root : root + u'/'))
+#if defined(Q_OS_WIN)
+        const auto cs = Qt::CaseInsensitive;
+#else
+        const auto cs = Qt::CaseSensitive;
+#endif
+        const QString prefix = root.endsWith(u'/') ? root : root + u'/';
+        if (real.compare(root, cs) == 0 || real.startsWith(prefix, cs))
             return true;
     }
     return false;
