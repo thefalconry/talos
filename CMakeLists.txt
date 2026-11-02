@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(Talos
-    VERSION 1.0.0
+    VERSION 1.0.1
     DESCRIPTION "Talos, a desktop and mobile client for the Talon agent"
     LANGUAGES C CXX)
 
@@ -137,6 +137,11 @@ if(APPLE AND NOT IOS)
     target_link_libraries(talos PRIVATE
         "-framework Carbon" "-framework LocalAuthentication" "-framework UserNotifications")
 endif()
+if(ANDROID AND Qt6_VERSION VERSION_LESS 6.9)
+    # Without SafeArea the app is drawn under the status bar, the navigation
+    # bar and the keyboard, with nothing to say where they are.
+    message(FATAL_ERROR "Android builds need Qt 6.9 or later (found ${Qt6_VERSION})")
+endif()
 if(ANDROID)
     # QtAndroidPrivate::startActivity, for the system speech recogniser.
     if(NOT TARGET Qt6::CorePrivate)
@@ -229,7 +234,7 @@ set_target_properties(talos PROPERTIES
     QT_ANDROID_PACKAGE_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/android
     QT_ANDROID_PACKAGE_NAME ${TALOS_ANDROID_ID}
     QT_ANDROID_VERSION_NAME ${PROJECT_VERSION}
-    QT_ANDROID_VERSION_CODE 7
+    QT_ANDROID_VERSION_CODE 8
     QT_ANDROID_TARGET_SDK_VERSION 35
     QT_ANDROID_MIN_SDK_VERSION 28
 )

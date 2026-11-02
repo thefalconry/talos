@@ -363,10 +363,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build cmake rsync unzip
 
+      # Android needs Qt 6.9 or later: SafeArea, which keeps the app clear of
+      # the status bar, the navigation bar and the keyboard on a phone that
+      # draws it edge to edge, first appears there. CMake refuses older.
       - name: Install Desktop Qt (Host)
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.8.2'
+          version: '6.11.2'
           target: 'desktop'
           modules: 'qtmultimedia qtpositioning qtspeech'
           dir: ${{ runner.temp }}/qt-host
@@ -376,7 +379,7 @@ jobs:
       - name: Install Android Qt (Target)
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.8.2'
+          version: '6.11.2'
           target: 'android'
           arch: 'android_arm64_v8a'
           modules: 'qtmultimedia qtpositioning qtspeech'
@@ -431,7 +434,7 @@ jobs:
           export QT_HOST=$(find "${{ runner.temp }}/qt-host" -type d \( -name "gcc_64" -o -name "linux_gcc_64" \) | head -1)
           export QT_ANDROID=$(find "${{ runner.temp }}/qt-android" -type d -name "android_arm64_v8a" | head -1)
           export ANDROID_SDK="$ANDROID_HOME"
-          NDK_VERSION="26.3.11579264"
+          NDK_VERSION="27.2.12479018"  # r27c, what Qt 6.11 is built with
           if [ ! -d "$ANDROID_SDK/ndk/$NDK_VERSION" ]; then
             echo y | "$ANDROID_SDK/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION"
           fi
