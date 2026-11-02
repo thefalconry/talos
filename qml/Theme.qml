@@ -12,7 +12,9 @@ QtObject {
     readonly property bool dark: App.prefs.theme === "dark"
                                  || (App.prefs.theme !== "light" && App.systemDark)
     readonly property real scale: Math.max(0.85, Math.min(1.4, App.prefs.textScale))
-    readonly property color accent: App.prefs.accent
+    readonly property color accent: (App.prefs.accent === "system" || !App.prefs.accent)
+                                    ? ((App.systemAccent && App.systemAccent.length > 0) ? App.systemAccent : "#C2622D")
+                                    : App.prefs.accent
 
     // Surfaces, from the window back to raised cards.
     readonly property color bg: dark ? "#262624" : "#FAF9F5"

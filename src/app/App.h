@@ -56,6 +56,8 @@ class App : public QObject
     Q_PROPERTY(QString platform READ platform CONSTANT)
     Q_PROPERTY(bool mobile READ mobile CONSTANT)
     Q_PROPERTY(bool systemDark READ systemDark NOTIFY systemDarkChanged)
+    Q_PROPERTY(QString systemAccent READ systemAccent NOTIFY systemAccentChanged)
+    Q_PROPERTY(bool systemAccentAvailable READ systemAccentAvailable NOTIFY systemAccentChanged)
     Q_PROPERTY(bool active READ active NOTIFY activeChanged)
     Q_PROPERTY(QVariantList approvals READ approvals NOTIFY approvalsChanged)
 public:
@@ -94,6 +96,8 @@ public:
     QString platform() const;
     bool mobile() const;
     bool systemDark() const;
+    QString systemAccent() const;
+    bool systemAccentAvailable() const;
     bool active() const { return m_active; }
     QVariantList approvals() const { return m_approvals; }
 
@@ -161,6 +165,7 @@ public:
 
 signals:
     void systemDarkChanged();
+    void systemAccentChanged();
     void activeChanged();
     void approvalsChanged();
     void serviceChanged();
