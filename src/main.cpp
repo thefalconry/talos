@@ -5,6 +5,7 @@
 #include "app/FlowChartItem.h"
 #include "app/IconItem.h"
 #include "app/NoNetwork.h"
+#include "app/TouchpadScroll.h"
 #include "core/Store.h"
 #include "mesh/Headless.h"
 #include "mesh/ServiceInstall.h"
@@ -227,6 +228,10 @@ int main(int argc, char *argv[])
     QGuiApplication::setWindowIcon(talos::Desktop::appIcon());
     // Closing the window may only hide it (tray); quitting is explicit.
     QGuiApplication::setQuitOnLastWindowClosed(false);
+    // Touchpad scrolling that follows the fingers and glides on (Linux).
+    talos::TouchpadScroll touchpadScroll;
+    if (talos::TouchpadScroll::wanted())
+        qapp.installEventFilter(&touchpadScroll);
 
     QCommandLineParser parser;
     parser.setApplicationDescription(u"Talos, a desktop and mobile client for the Talon agent"_s);

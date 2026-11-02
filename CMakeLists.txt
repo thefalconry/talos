@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(Talos
-    VERSION 1.0.2
+    VERSION 1.0.3
     DESCRIPTION "Talos, a desktop and mobile client for the Talon agent"
     LANGUAGES C CXX)
 
@@ -106,6 +106,7 @@ qt_add_executable(talos
     src/app/GlobalShortcut.h src/app/GlobalShortcut.cpp
     src/app/FilePicker.h src/app/FilePicker.cpp
     src/app/LinuxTheme.h src/app/LinuxTheme.cpp
+    src/app/TouchpadScroll.h src/app/TouchpadScroll.cpp
 )
 
 set(TALON_QML_SINGLETONS qml/Theme.qml)
@@ -235,7 +236,7 @@ set_target_properties(talos PROPERTIES
     QT_ANDROID_PACKAGE_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/android
     QT_ANDROID_PACKAGE_NAME ${TALOS_ANDROID_ID}
     QT_ANDROID_VERSION_NAME ${PROJECT_VERSION}
-    QT_ANDROID_VERSION_CODE 9
+    QT_ANDROID_VERSION_CODE 10
     QT_ANDROID_TARGET_SDK_VERSION 35
     QT_ANDROID_MIN_SDK_VERSION 28
 )
@@ -266,4 +267,12 @@ if(TALOS_BUILD_TESTS AND TARGET Qt6::Test AND NOT ANDROID)
     target_compile_definitions(talos_tests PRIVATE
         TALOS_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
     add_test(NAME talos_tests COMMAND talos_tests)
+
+    # Touchpad scrolling against a real Flickable, without a display.
+    add_executable(talos_scroll_tests tests/tst_scroll.cpp src/app/TouchpadScroll.cpp)
+    set_target_properties(talos_scroll_tests PROPERTIES WIN32_EXECUTABLE FALSE)
+    target_include_directories(talos_scroll_tests PRIVATE src)
+    target_link_libraries(talos_scroll_tests PRIVATE Qt6::Quick Qt6::Test)
+    add_test(NAME talos_scroll_tests COMMAND talos_scroll_tests)
+    set_tests_properties(talos_scroll_tests PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen)
 endif()
