@@ -20,6 +20,43 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # A push to main whose project version has no release yet publishes one:
+  # bumping VERSION in CMakeLists.txt is the whole release procedure.
+  # Publishing a release by hand still works the same way as before.
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+      bumped: ${{ steps.read.outputs.bumped }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read the version and look for its release
+        id: read
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(sed -n '/^project(/,/)/s/^ *VERSION \([0-9][0-9.]*\).*/\1/p' CMakeLists.txt | head -1)
+          if [ -z "$version" ]; then
+            echo "::error::no project VERSION found in CMakeLists.txt"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          bumped=false
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF" = refs/heads/main ]; then
+            # A tag made by hand counts as released too: only a version
+            # nobody has tagged yet is published from here.
+            if ! gh release view "v$version" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 \
+               && ! git ls-remote --exit-code --tags origin "refs/tags/v$version" > /dev/null; then
+              bumped=true
+              echo "Version $version has no release yet: this run publishes it."
+            fi
+          fi
+          echo "bumped=$bumped" >> "$GITHUB_OUTPUT"
+
   test-linux:
     name: Test (Linux)
     runs-on: ubuntu-latest
@@ -212,6 +249,7 @@ jobs:
 
   package-macos:
     name: Package (macOS DMG)
+    needs: version
     runs-on: macos-14
     timeout-minutes: 30
     steps:
@@ -250,7 +288,7 @@ jobs:
         env:
           SIGNING_P12: ${{ secrets.TALON_MAC_SIGNING_P12 }}
           SIGNING_PASSWORD: ${{ secrets.TALON_MAC_SIGNING_PASSWORD }}
-          IS_RELEASE: ${{ github.event_name == 'release' }}
+          IS_RELEASE: ${{ github.event_name == 'release' || needs.version.outputs.bumped == 'true' }}
         run: |
           set -euo pipefail
           if [ -z "$SIGNING_P12" ]; then
@@ -307,6 +345,7 @@ jobs:
 
   package-android:
     name: Package (Android APK)
+    needs: version
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -350,7 +389,7 @@ jobs:
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          IS_RELEASE: ${{ github.event_name == 'release' }}
+          IS_RELEASE: ${{ github.event_name == 'release' || needs.version.outputs.bumped == 'true' }}
         run: |
           set -euo pipefail
           if [ "$IS_RELEASE" = "true" ]; then
@@ -407,7 +446,7 @@ jobs:
       - name: Verify Android APK signer
         shell: bash
         env:
-          IS_RELEASE: ${{ github.event_name == 'release' }}
+          IS_RELEASE: ${{ github.event_name == 'release' || needs.version.outputs.bumped == 'true' }}
         run: |
           set -euo pipefail
           APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner
@@ -426,8 +465,10 @@ jobs:
 
   release:
     name: Publish Release Artifacts
-    if: github.event_name == 'release' && github.event.action == 'published'
-    needs: [test-linux, package-linux, package-fedora, package-windows, package-macos, package-android]
+    if: >-
+      (github.event_name == 'release' && github.event.action == 'published')
+      || needs.version.outputs.bumped == 'true'
+    needs: [version, test-linux, package-linux, package-fedora, package-windows, package-macos, package-android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -446,7 +487,28 @@ jobs:
           cat SHA256SUMS
 
       - name: Attach artifacts to release
+        if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload "${{ github.event.release.tag_name }}" artifacts/* --clobber --repo "${{ github.repository }}"
+
+      # A release made with this workflow's own token starts no other run,
+      # so the version-bump release is created here with everything already
+      # attached, and nobody sees it empty.
+      - name: Publish the bumped version
+        if: github.event_name != 'release'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          tag="v$VERSION"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            # Another run got there first; bring its files up to date.
+            gh release upload "$tag" artifacts/* --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$tag" artifacts/* --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" --title "Talos $VERSION" --generate-notes
+          fi
