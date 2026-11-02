@@ -4,12 +4,12 @@ import QtQuick.Layouts
 import Talos.Native
 
 // The tool calls of one turn, folded into a single line that says what they
-// amounted to ("Ran 3 commands, read 2 files · 4.2s") or, while one is in
+// amounted to ("3 commands executed, 1 file read · 4.2s") or, while one is in
 // flight, what is happening now. A click unfolds the calls, one row each;
 // a click on a row opens its input, output and error. A failure unfolds the
 // list by itself, so it is never hidden behind a click.
 //
-// With "Say what tool calls are for" on, the line and the rows carry a short
+// With "Say what tool calls are for" on, the unfolded rows carry a short
 // note of each call in place of the raw command: the model's own reason
 // where it gave one ("Check which Qt is installed"), otherwise what the call
 // acted on ("Read Session.cpp").
@@ -26,8 +26,18 @@ Column {
     property bool open: false
     /// The reader chose; nothing unfolds or folds on its own after that.
     property bool chosen: false
+    /// Tracks expanded state for each reasoning step by tool ID.
+    property var expanded: ({})
 
     spacing: 4
+
+    onToolsChanged: {
+        if (!tools || tools.length === 0) {
+            expanded = ({})
+            chosen = false
+            open = false
+        }
+    }
 
     onFailedChanged: {
         if (failed && !chosen)
@@ -36,6 +46,29 @@ Column {
     Component.onCompleted: {
         if (failed)
             open = true
+    }
+
+    function toolKey(tool, index) {
+        if (!tool)
+            return "tool_" + index
+        return tool.id ? String(tool.id) : ((tool.name || "tool") + "_" + index)
+    }
+
+    function isExpanded(tool, index) {
+        if (!tool)
+            return false
+        const key = toolKey(tool, index)
+        return root.expanded[key] === true
+    }
+
+    function toggleEntry(tool, index) {
+        if (!tool)
+            return
+        const key = toolKey(tool, index)
+        const current = isExpanded(tool, index)
+        const next = Object.assign({}, expanded)
+        next[key] = !current
+        expanded = next
     }
 
     /// What a call is doing, for the line shown while it runs.
@@ -69,35 +102,27 @@ Column {
         return on !== "" ? (tool.label || "") + ": " + on : (tool.label || "")
     }
 
-    /// The notes of all the calls in order, each once, with how many calls
-    /// it covers: `[{text, count}]`.
-    readonly property var notes: {
-        const out = []
-        for (let i = 0; i < tools.length; ++i) {
-            const text = note(tools[i])
-            if (text === "")
-                continue
-            const known = out.find(entry => entry.text === text)
-            if (known)
-                known.count += 1
-            else
-                out.push({ text: text, count: 1 })
-        }
-        return out
-    }
-
-    /// One kind of work and how often, as a clause of the finished line.
+    /// One kind of work and how often, as a clause of the header line.
     function tally(bucket) {
         const n = bucket.count
         switch (bucket.kind) {
-        case "command": return n === 1 ? qsTr("ran a command") : qsTr("ran %1 commands").arg(n)
-        case "read": return n === 1 ? qsTr("read a file") : qsTr("read %1 files").arg(n)
-        case "edit": return n === 1 ? qsTr("edited a file") : qsTr("edited %1 files").arg(n)
-        case "search": return n === 1 ? qsTr("searched files") : qsTr("searched files %1 times").arg(n)
-        case "web": return n === 1 ? qsTr("checked the web") : qsTr("checked the web %1 times").arg(n)
-        case "agent": return n === 1 ? qsTr("ran a subtask") : qsTr("ran %1 subtasks").arg(n)
+        case "command":
+            return n === 1 ? qsTr("1 command executed") : qsTr("%1 commands executed").arg(n)
+        case "read":
+            return n === 1 ? qsTr("1 file read") : qsTr("%1 files read").arg(n)
+        case "edit":
+            return n === 1 ? qsTr("1 file edited") : qsTr("%1 files edited").arg(n)
+        case "search":
+            return n === 1 ? qsTr("1 file searched") : qsTr("%1 files searched").arg(n)
+        case "web":
+            return n === 1 ? qsTr("1 web check") : qsTr("%1 web checks").arg(n)
+        case "agent":
+            return n === 1 ? qsTr("1 subtask run") : qsTr("%1 subtasks run").arg(n)
+        default:
+            return n === 1
+                ? (bucket.label ? qsTr("1 %1 called").arg(bucket.label.toLowerCase()) : qsTr("1 tool called"))
+                : (bucket.label ? qsTr("%1 %2 called").arg(n).arg(bucket.label.toLowerCase()) : qsTr("%1 tools called").arg(n))
         }
-        return n === 1 ? qsTr("used %1").arg(bucket.label) : qsTr("used %1 tools").arg(n)
     }
 
     readonly property string headline: {
@@ -105,23 +130,12 @@ Column {
         if (s.total === 0)
             return ""
         if (busy) {
-            const now = (sayWhy ? note(s.running) : doing(s.running)) + "…"
-            return s.finished > 0 ? qsTr("%1 · %2 done").arg(now).arg(s.finished) : now
+            const inFlight = doing(s.running) + "…"
+            return s.finished > 0 ? qsTr("%1 · %2 executed").arg(inFlight).arg(s.finished) : inFlight
         }
-        let text = ""
-        if (sayWhy && notes.length > 0) {
-            // The first notes, and how many calls they leave unsaid.
-            const shown = notes.slice(0, 2)
-            let rest = s.total
-            for (const reason of shown)
-                rest -= reason.count
-            text = shown.map(reason => reason.text).join(", ")
-            if (rest > 0)
-                text = qsTr("%1 and %2 more").arg(text).arg(rest)
-        } else {
-            text = s.kinds.map(tally).join(", ")
-            text = text.charAt(0).toUpperCase() + text.slice(1)
-        }
+        let text = s.kinds.length > 0
+            ? s.kinds.map(tally).join(", ")
+            : (s.total === 1 ? qsTr("1 tool called") : qsTr("%1 tools called").arg(s.total))
         if (s.duration !== "")
             text += " · " + s.duration
         if (s.failed > 0)
@@ -205,9 +219,8 @@ Column {
                     readonly property var tool: root.tools[index] || ({})
                     readonly property string note: root.note(tool)
                     readonly property bool reasoned: root.sayWhy && note !== ""
-                    // With a single call there is nothing to choose between:
-                    // unfolding the line shows what that call did.
-                    property bool open: root.tools.length === 1
+                    // Keep individual tool steps collapsed by default; preserve user toggles.
+                    readonly property bool open: root.isExpanded(tool, index, root.expanded)
 
                     width: root.width
                     spacing: 0
@@ -221,7 +234,7 @@ Column {
                         Accessible.role: Accessible.Button
                         Accessible.name: entry.reasoned ? entry.note
                                                         : (entry.tool.label || "") + " " + (entry.tool.detail || "")
-                        Accessible.onPressAction: entry.open = !entry.open
+                        Accessible.onPressAction: root.toggleEntry(entry.tool, entry.index)
 
                         RowLayout {
                             anchors.fill: parent
@@ -291,7 +304,7 @@ Column {
                             }
                         }
                         HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }
-                        TapHandler { id: tap; onTapped: entry.open = !entry.open }
+                        TapHandler { id: tap; onTapped: root.toggleEntry(entry.tool, entry.index) }
                     }
 
                     Loader {
