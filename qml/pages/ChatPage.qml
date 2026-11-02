@@ -235,7 +235,22 @@ Rectangle {
                         App.session.loadOlder()
                 }
                 onContentHeightChanged: settle()
-                onHeightChanged: settle()
+                // Shorter (the keyboard came up) or taller again: the lines
+                // at the bottom stay where they were, as in any messenger,
+                // whether following the newest message or reading back.
+                property real lastHeight: height
+                onHeightChanged: {
+                    const grew = height - lastHeight
+                    lastHeight = height
+                    if (stick) {
+                        settle()
+                    } else if (grew !== 0 && contentHeight > height) {
+                        adjusting = true
+                        contentY = Math.max(originY, Math.min(contentY - grew,
+                                                              originY + contentHeight - height))
+                        adjusting = false
+                    }
+                }
                 onCountChanged: settle()
 
                 Connections {

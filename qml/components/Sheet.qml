@@ -21,14 +21,25 @@ C.Popup {
     padding: 0
     closePolicy: dismissable ? C.Popup.CloseOnEscape | C.Popup.CloseOnPressOutside
                              : C.Popup.NoAutoClose
-    width: Math.min(parent.width - (narrow ? 16 : 48), maxWidth)
-    x: Math.round((parent.width - width) / 2)
     readonly property var win: C.ApplicationWindow.window
-    // On a phone it rises from the bottom, above the gesture bar and the
-    // keyboard, and never past the status bar.
-    y: narrow ? Math.max((win ? win.insetTop : 0) + 8,
-                         parent.height - height - 8 - (win ? win.insetBottom : 0))
-              : Math.max(24, Math.round((parent.height - height) / 2.4))
+    // What the status bar, the navigation bar (gestures or buttons, at the
+    // bottom or the side) and the keyboard leave of the window.
+    readonly property real roomTop: win ? win.insetTop : 0
+    readonly property real roomBottom: win ? win.insetBottom : 0
+    readonly property real roomLeft: win ? win.insetLeft : 0
+    readonly property real roomRight: win ? win.insetRight : 0
+    readonly property real gap: narrow ? 8 : 24
+    readonly property real roomWidth: (parent ? parent.width : 0) - roomLeft - roomRight
+    readonly property real roomHeight: (parent ? parent.height : 0) - roomTop - roomBottom
+
+    width: Math.min(roomWidth - 2 * gap, maxWidth)
+    // Too tall for the room left (the keyboard is up): the body scrolls.
+    height: Math.min(implicitHeight, roomHeight - 2 * gap)
+    x: roomLeft + Math.round((roomWidth - width) / 2)
+    // On a phone it rises from the bottom, above the navigation bar and
+    // the keyboard; elsewhere it sits a little above the middle.
+    y: narrow ? roomTop + roomHeight - height - gap
+              : roomTop + Math.max(gap, Math.round((roomHeight - height) / 2.4))
 
     enter: Transition {
         NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 110 }
@@ -80,6 +91,8 @@ C.Popup {
             Layout.bottomMargin: footerRow.children.length > 0 ? 0 : 20
             implicitHeight: Math.min(body.implicitHeight,
                                      (root.parent ? root.parent.height : 600) * 0.68)
+            Layout.fillHeight: true
+            Layout.minimumHeight: Math.min(body.implicitHeight, 48)
             contentHeight: body.implicitHeight
             clip: true
             boundsBehavior: Flickable.StopAtBounds
