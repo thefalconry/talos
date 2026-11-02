@@ -47,7 +47,10 @@ C.ApplicationWindow {
     // A phone draws the app edge to edge: the status bar, the gesture bar
     // and the on-screen keyboard sit on top of the window, and the layout
     // keeps its controls out from under them.
-    readonly property var safe: contentItem.SafeArea.margins
+    // SafeArea exists from Qt 6.9; on an older Qt this is nothing at all
+    // rather than an error in every binding below.
+    readonly property var safeArea: contentItem.SafeArea
+    readonly property var safe: safeArea ? safeArea.margins : null
     /// How much of the window the keyboard covers. Where the system has
     /// already made the window shorter, the keyboard starts below it and
     /// this is nothing.
@@ -57,10 +60,10 @@ C.ApplicationWindow {
         const r = Qt.inputMethod.keyboardRectangle
         return r.height > 0 ? Math.max(0, Math.min(height, height - r.y)) : 0
     }
-    readonly property real insetTop: App.mobile ? safe.top : 0
-    readonly property real insetBottom: App.mobile ? Math.max(safe.bottom, keyboardOverlap) : 0
-    readonly property real insetLeft: App.mobile ? safe.left : 0
-    readonly property real insetRight: App.mobile ? safe.right : 0
+    readonly property real insetTop: App.mobile && safe ? safe.top : 0
+    readonly property real insetBottom: App.mobile ? Math.max(safe ? safe.bottom : 0, keyboardOverlap) : 0
+    readonly property real insetLeft: App.mobile && safe ? safe.left : 0
+    readonly property real insetRight: App.mobile && safe ? safe.right : 0
 
     /// Put the keyboard away and take focus off whatever had it: used when
     /// a phone moves to another screen, where a hidden field would otherwise
