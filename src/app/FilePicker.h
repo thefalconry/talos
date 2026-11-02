@@ -4,21 +4,26 @@
 #include <QList>
 #include <QObject>
 #include <QPointer>
+#include <QProcess>
 #include <QStringList>
 #include <QUrl>
 
 class QFileDialog;
+class QWindow;
 
 namespace talos {
 
 /// The system's own dialog for choosing files or a folder, for QML.
 ///
-/// It stands where Qt Quick Dialogs' FileDialog and FolderDialog stood and
-/// answers to the same names. Those bring a second, drawn implementation of
-/// every dialog with them, and through it every Qt Quick Controls style:
-/// some sixteen megabytes of libraries in an Android package, all loaded at
-/// each start, for a fallback this app never shows. QFileDialog asks the
-/// platform for the same native dialog and needs none of it.
+/// On Linux, desktop environments (like KDE Plasma and GNOME) provide their own
+/// native file dialogs — such as KDE's KIO file dialog and the XDG Desktop
+/// Portal FileChooser — offering bookmarks, network places, Dolphin/Nautilus
+/// integration, and theme consistency.
+///
+/// FilePicker prefers the active desktop environment's native file chooser (via
+/// kdialog for direct KIO integration on KDE, or the XDG Portal over D-Bus, or
+/// zenity on GNOME), and falls back gracefully to QFileDialog if native tools
+/// are unavailable.
 class FilePicker : public QObject
 {
     Q_OBJECT
@@ -48,14 +53,35 @@ signals:
     void accepted();
     void rejected();
 
+private slots:
+    void onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus);
+#if defined(TALOS_HAVE_DBUS)
+    void onPortalResponse(uint response, const QVariantMap &results);
+#endif
+
 private:
+    bool openPortal(QWindow *owner);
+    bool openKdialog(QWindow *owner);
+    bool openZenity(QWindow *owner);
+    void openQtDialog(QWindow *owner);
+
+    void finishWithUrls(const QList<QUrl> &urls);
+    void finishRejected();
+    void cleanup();
+
     QString m_title;
     FileMode m_mode = OpenFile;
     QStringList m_filters;
     QString m_suffix;
     QUrl m_current;
     QList<QUrl> m_selected;
+
+    bool m_active = false;
     QPointer<QFileDialog> m_dialog;
+    QPointer<QProcess> m_process;
+#if defined(TALOS_HAVE_DBUS)
+    QString m_portalRequestPath;
+#endif
 };
 
 } // namespace talos

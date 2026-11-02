@@ -213,6 +213,11 @@ int main(int argc, char *argv[])
     if (argc > 1 && qstrcmp(argv[1], "service") == 0)
         return runWithoutDisplay(argc, argv, true);
 
+#if defined(Q_OS_LINUX)
+    if (!qEnvironmentVariableIsSet("QT_USE_PORTAL"))
+        qputenv("QT_USE_PORTAL", "1");
+#endif
+
     QApplication qapp(argc, argv);
     QCoreApplication::setOrganizationName(u"Talos"_s);
     QCoreApplication::setApplicationName(u"talos"_s);
