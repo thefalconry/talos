@@ -9,9 +9,15 @@ Rectangle {
     id: page
     color: Theme.bg
 
+    readonly property var win: C.ApplicationWindow.window
+    /// The height the page has without the keyboard. The form is placed
+    /// against this, so it stays put when the keyboard comes up and the
+    /// page scrolls instead: the field just tapped doesn't slide away.
+    readonly property real steadyHeight: win ? height + win.insetBottom - win.barBottom : height
+
     Flickable {
         anchors.fill: parent
-        contentHeight: card.implicitHeight + 64
+        contentHeight: card.y + card.implicitHeight + 32
         boundsBehavior: Flickable.StopAtBounds
         clip: true
 
@@ -19,7 +25,7 @@ Rectangle {
             id: card
             width: Math.min(parent.width - 40, 460)
             anchors.horizontalCenter: parent.horizontalCenter
-            y: Math.max(32, (page.height - implicitHeight) / 2.6)
+            y: Math.max(32, (page.steadyHeight - implicitHeight) / 2.6)
             spacing: 18
 
             BrandMark {

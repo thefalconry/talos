@@ -23,6 +23,13 @@ C.Popup {
     padding: 0
     width: parent.width
     height: parent.height
+    // Drawn edge to edge; the controls keep clear of the status bar, the
+    // navigation bar and the keyboard.
+    readonly property var win: C.ApplicationWindow.window
+    topPadding: win ? win.insetTop : 0
+    bottomPadding: win ? win.insetBottom : 0
+    leftPadding: win ? win.insetLeft : 0
+    rightPadding: win ? win.insetRight : 0
     closePolicy: C.Popup.CloseOnEscape
 
     onOpened: {
@@ -112,6 +119,7 @@ C.Popup {
             Text {
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
                 color: Theme.text
                 font.family: Theme.serif
                 font.pixelSize: Theme.fs(24)

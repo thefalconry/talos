@@ -94,9 +94,13 @@ C.Popup {
     modal: true
     focus: true
     padding: 0
-    width: Math.min(parent.width - 24, 600)
-    x: Math.round((parent.width - width) / 2)
-    y: Math.max(12, Math.round(parent.height * 0.14))
+    readonly property real roomTop: win ? win.insetTop : 0
+    readonly property real roomBottom: win ? win.insetBottom : 0
+    readonly property real roomLeft: win ? win.insetLeft : 0
+    readonly property real roomWidth: parent.width - roomLeft - (win ? win.insetRight : 0)
+    width: Math.min(roomWidth - 24, 600)
+    x: roomLeft + Math.round((roomWidth - width) / 2)
+    y: roomTop + Math.max(12, Math.round((parent.height - roomTop - roomBottom) * 0.12))
     closePolicy: C.Popup.CloseOnEscape | C.Popup.CloseOnPressOutside
 
     onAboutToShow: {
@@ -177,7 +181,9 @@ C.Popup {
         ListView {
             id: results
             Layout.fillWidth: true
-            Layout.preferredHeight: Math.min(contentHeight + 12, 400)
+            // Down to the keyboard at most.
+            Layout.preferredHeight: Math.max(0, Math.min(contentHeight + 12, 400,
+                                                         cmd.parent.height - cmd.roomBottom - cmd.y - 80))
             topMargin: 6
             bottomMargin: 6
             clip: true

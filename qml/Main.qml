@@ -51,19 +51,124 @@ C.ApplicationWindow {
     // rather than an error in every binding below.
     readonly property var safeArea: contentItem.SafeArea
     readonly property var safe: safeArea ? safeArea.margins : null
-    /// How much of the window the keyboard covers. Where the system has
-    /// already made the window shorter, the keyboard starts below it and
-    /// this is nothing.
-    readonly property real keyboardOverlap: {
+    /// How much of the window the keyboard covers, as the system reports it
+    /// this instant. Where the system has already made the window shorter,
+    /// the keyboard starts below it and this is nothing.
+    readonly property real keyboardNow: {
         if (!App.mobile || !Qt.inputMethod.visible)
             return 0
         const r = Qt.inputMethod.keyboardRectangle
         return r.height > 0 ? Math.max(0, Math.min(height, height - r.y)) : 0
     }
+    /// The same, steadied. Moving between a text field and a password
+    /// field, the keyboard reports itself gone for a moment and then back.
+    /// Following that blink would grow the page, pull every scrolled view
+    /// back to the top, and leave the field being typed into behind the
+    /// keyboard once it returns. So room for the keyboard is made at once,
+    /// and given back only once the keyboard has stayed away.
+    property real keyboardOverlap: 0
+    onKeyboardNowChanged: {
+        if (keyboardNow >= keyboardOverlap) {
+            keyboardSettle.stop()
+            keyboardOverlap = keyboardNow
+        } else {
+            keyboardSettle.interval = typingItem ? 400 : 120
+            keyboardSettle.restart()
+        }
+    }
+    Timer {
+        id: keyboardSettle
+        onTriggered: root.keyboardOverlap = root.keyboardNow
+    }
+    /// The bars alone, without the keyboard.
+    readonly property real barBottom: App.mobile && safe ? safe.bottom : 0
     readonly property real insetTop: App.mobile && safe ? safe.top : 0
-    readonly property real insetBottom: App.mobile ? Math.max(safe ? safe.bottom : 0, keyboardOverlap) : 0
+    readonly property real insetBottom: App.mobile ? Math.max(barBottom, keyboardOverlap) : 0
     readonly property real insetLeft: App.mobile && safe ? safe.left : 0
     readonly property real insetRight: App.mobile && safe ? safe.right : 0
+
+    /// The text field being typed into, if any.
+    readonly property Item typingItem: {
+        const item = activeFocusItem
+        return item && item.cursorRectangle !== undefined && item.readOnly !== true ? item : null
+    }
+    // Whenever the field, the keyboard or the window changes, scroll the
+    // field back into sight: a phone keyboard covers half the screen, and
+    // nothing else moves a form's fields out from under it.
+    onTypingItemChanged: revealSoon()
+    onInsetBottomChanged: revealSoon()
+    onHeightChanged: revealSoon()
+    function revealSoon() {
+        if (App.mobile && typingItem)
+            revealTimer.restart()
+    }
+    // A beat later, once the layouts have taken the new size.
+    Timer {
+        id: revealTimer
+        interval: 60
+        onTriggered: root.revealTyping()
+    }
+    NumberAnimation {
+        id: revealScroll
+        property: "contentY"
+        duration: 180
+        easing.type: Easing.OutCubic
+    }
+    /// Scroll each view that holds the field being typed into, innermost
+    /// first, just far enough that the field shows with its label above
+    /// it. A field taller than half the view (a long message) shows the
+    /// line with the cursor instead.
+    function revealTyping() {
+        const item = typingItem
+        if (!item || !item.visible)
+            return
+        const views = []
+        for (let view = item.parent; view; view = view.parent) {
+            // A Flickable, ListView or the inside of a ScrollView, and not
+            // one the person is scrolling at this moment.
+            if (view.contentY !== undefined && view.flickableDirection !== undefined
+                    && view.height > 0 && view.interactive && !view.moving)
+                views.push(view)
+        }
+        // One view glides there. Nested ones jump, each in turn, since
+        // moving an inner one shifts where the field sits in the outer.
+        if (views.length === 1) {
+            const y = revealPosition(item, views[0])
+            if (y !== null) {
+                revealScroll.stop()
+                revealScroll.target = views[0]
+                revealScroll.to = y
+                revealScroll.start()
+            }
+            return
+        }
+        for (const view of views) {
+            const y = revealPosition(item, view)
+            if (y !== null)
+                view.contentY = y
+        }
+    }
+    /// Where `view` has to scroll to show `item`, or null if it shows.
+    function revealPosition(item, view) {
+        const at = item.mapToItem(view.contentItem, 0, 0)
+        let top = at.y - 30
+        let bottom = at.y + item.height + 40
+        if (item.height > view.height / 2) {
+            const c = item.cursorRectangle
+            top = at.y + c.y - 16
+            bottom = at.y + c.y + c.height + 16
+        }
+        let y = view.contentY
+        if (bottom > y + view.height)
+            y = bottom - view.height
+        if (top < y)
+            y = top
+        const lowest = view.originY - view.topMargin
+        const highest = Math.max(lowest, view.originY + view.contentHeight
+                                         + view.bottomMargin - view.height)
+        y = Math.max(lowest, Math.min(y, highest))
+        return Math.abs(y - view.contentY) >= 1 ? y : null
+    }
 
     /// Put the keyboard away and take focus off whatever had it: used when
     /// a phone moves to another screen, where a hidden field would otherwise

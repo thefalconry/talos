@@ -7,6 +7,12 @@ C.Menu {
 
     padding: 5
     implicitWidth: 230
+    // Kept clear of the status bar, the navigation bar and the keyboard.
+    readonly property var win: C.ApplicationWindow.window
+    topMargin: (win ? win.insetTop : 0) + 8
+    bottomMargin: (win ? win.insetBottom : 0) + 8
+    leftMargin: (win ? win.insetLeft : 0) + 8
+    rightMargin: (win ? win.insetRight : 0) + 8
 
     background: Rectangle {
         implicitWidth: 230
