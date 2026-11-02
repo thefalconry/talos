@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include "app/App.h"
+#include "app/LinuxTheme.h"
 
 #include "mesh/Platform.h"
 #include "mesh/SelfUpdate.h"
@@ -215,6 +216,14 @@ App::App(QObject *parent)
 
     connect(qApp->styleHints(), &QStyleHints::colorSchemeChanged, this,
             &App::systemDarkChanged);
+#if defined(Q_OS_LINUX)
+    talos::LinuxTheme::instance()->initSync();
+    talos::LinuxTheme::instance()->startMonitoring();
+    connect(talos::LinuxTheme::instance(), &talos::LinuxTheme::brightnessChanged, this,
+            &App::systemDarkChanged);
+    connect(talos::LinuxTheme::instance(), &talos::LinuxTheme::accentColorChanged, this,
+            &App::systemAccentChanged);
+#endif
     connect(qApp, &QGuiApplication::applicationStateChanged, this,
             [this](Qt::ApplicationState state) {
         const bool active = state == Qt::ApplicationActive;
@@ -330,7 +339,31 @@ bool App::mobile() const
 
 bool App::systemDark() const
 {
+#if defined(Q_OS_LINUX)
+    if (talos::LinuxTheme::isAvailable()) {
+        const auto b = talos::LinuxTheme::instance()->brightness();
+        if (b != talos::LinuxTheme::Brightness::Unknown)
+            return b == talos::LinuxTheme::Brightness::Dark;
+    }
+#endif
     return qApp->styleHints()->colorScheme() == Qt::ColorScheme::Dark;
+}
+
+QString App::systemAccent() const
+{
+#if defined(Q_OS_LINUX)
+    if (talos::LinuxTheme::isAvailable()) {
+        const QColor c = talos::LinuxTheme::instance()->accentColor();
+        if (c.isValid())
+            return c.name(QColor::HexRgb).toUpper();
+    }
+#endif
+    return QString();
+}
+
+bool App::systemAccentAvailable() const
+{
+    return !systemAccent().isEmpty();
 }
 
 bool App::eventFilter(QObject *watched, QEvent *event)

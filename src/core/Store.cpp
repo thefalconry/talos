@@ -44,7 +44,11 @@ QVariantMap defaultPrefs()
     return {
         // Appearance
         {u"theme"_s, u"system"_s},          // system | light | dark
+#if defined(Q_OS_LINUX)
+        {u"accent"_s, u"system"_s},
+#else
         {u"accent"_s, u"#C2622D"_s},
+#endif
         {u"textScale"_s, 1.0},
         {u"sidebarOpen"_s, true},
         {u"sidebarWidth"_s, 292},

@@ -105,6 +105,7 @@ qt_add_executable(talos
     src/app/FlowChartItem.h src/app/FlowChartItem.cpp
     src/app/GlobalShortcut.h src/app/GlobalShortcut.cpp
     src/app/FilePicker.h src/app/FilePicker.cpp
+    src/app/LinuxTheme.h src/app/LinuxTheme.cpp
 )
 
 set(TALON_QML_SINGLETONS qml/Theme.qml)

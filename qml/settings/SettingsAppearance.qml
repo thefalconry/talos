@@ -28,16 +28,19 @@ Pane {
                 spacing: 8
 
                 Repeater {
-                    model: Theme.accents
+                    model: App.systemAccentAvailable ? ["system"].concat(Theme.accents) : Theme.accents
 
                     Rectangle {
                         id: swatch
                         required property string modelData
-                        readonly property bool on: Qt.colorEqual(Theme.accent, modelData)
+                        readonly property bool isSystem: modelData === "system"
+                        readonly property color swatchColor: isSystem ? (App.systemAccent || "#C2622D") : modelData
+                        readonly property bool on: isSystem ? (App.prefs.accent === "system" || !App.prefs.accent)
+                                                            : (App.prefs.accent === modelData)
                         width: 26
                         height: 26
                         radius: 13
-                        color: modelData
+                        color: swatchColor
                         border.width: on ? 2 : 0
                         border.color: Theme.text
 
@@ -50,6 +53,15 @@ Pane {
                             border.width: 2
                             border.color: Theme.surface
                         }
+
+                        Icon {
+                            visible: swatch.isSystem
+                            name: "spark"
+                            size: 14
+                            color: Theme.accentInk
+                            anchors.centerIn: parent
+                        }
+
                         HoverHandler { cursorShape: Qt.PointingHandCursor }
                         TapHandler { onTapped: App.prefs.accent = swatch.modelData }
                     }
