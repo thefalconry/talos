@@ -75,6 +75,24 @@ public class TalosActivity extends QtActivity {
         return share;
     }
 
+    /**
+     * The app is drawn under the status and gesture bars, so their icons
+     * have to suit its theme: dark icons over the light theme, light ones
+     * over the dark.
+     */
+    public static void setLightBars(final Activity activity, final boolean light) {
+        if (Build.VERSION.SDK_INT < 30)
+            return;
+        activity.runOnUiThread(() -> {
+            android.view.WindowInsetsController bars = activity.getWindow().getInsetsController();
+            if (bars == null)
+                return;
+            int both = android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                | android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+            bars.setSystemBarsAppearance(light ? both : 0, both);
+        });
+    }
+
     /** Android 13+ shows nothing from an app that hasn't been allowed to. */
     public static void askForNotifications(Activity activity) {
         if (Build.VERSION.SDK_INT < 33)

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 import QtQuick
+import QtQuick.Controls.Basic as C
 
 // One short message at the bottom of the window that goes away by itself.
 Item {
@@ -13,6 +14,7 @@ Item {
         hide.restart()
     }
 
+    readonly property var win: C.ApplicationWindow.window
     anchors.fill: parent
     z: 900
 
@@ -20,7 +22,7 @@ Item {
         id: pill
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 28
+        anchors.bottomMargin: 28 + (root.win ? root.win.insetBottom : 0)
         width: Math.min(label.implicitWidth + 32, parent.width - 32)
         height: label.implicitHeight + 20
         radius: 12

@@ -4,6 +4,7 @@
 #include "core/Profile.h"
 
 #include <QDateTime>
+#include <QDebug>
 #include <QTimer>
 #include <cstdio>
 
@@ -37,8 +38,15 @@ void AppLog::add(Level level, const char *tag, const QString &msg)
     m_entries.push_back({QDateTime::currentMSecsSinceEpoch(), level, QString::fromLatin1(tag), clean});
     if (m_entries.size() > kMaxEntries)
         m_entries.pop_front();
-    if (level >= Info || qEnvironmentVariableIsSet("TALOS_DEBUG"))
+    if (level >= Info || qEnvironmentVariableIsSet("TALOS_DEBUG")) {
+#if defined(Q_OS_ANDROID)
+        // Android discards stderr; Qt's own log reaches logcat.
+        qInfo().noquote() << u"[%1] %2: %3"_s.arg(QLatin1StringView(levelName(level)),
+                                                  QLatin1StringView(tag), clean);
+#else
         std::fprintf(stderr, "[%s] %s: %s\n", levelName(level), tag, qPrintable(clean));
+#endif
+    }
     ++m_revision;
     // One notification per event-loop turn, however chatty the caller.
     if (!m_notifyQueued) {

@@ -38,6 +38,9 @@ void setKeepAlive(bool on);
 /// What another app shared to this one since the last call, as
 /// `{"text": …, "files": [content URIs]}` JSON; empty when nothing (Android).
 QString takeShared();
+/// Dark status- and gesture-bar icons for a light theme, or light ones for
+/// a dark theme (Android, which draws the app under those bars).
+void setLightSystemBars(bool light);
 /// Ask for permission to post notifications where the system requires it.
 void askForNotifications();
 /// The window's process says whether it is in front, so the background

@@ -72,7 +72,8 @@ void runScript(const QString &file, QQmlApplicationEngine *engine, talos::App *a
     QFile f(file);
     if (!f.open(QIODevice::ReadOnly)) {
         qWarning("cannot read script %s", qPrintable(file));
-        QCoreApplication::exit(2);
+        // Called before the event loop starts, where exit() alone does nothing.
+        QTimer::singleShot(0, qApp, [] { QCoreApplication::exit(2); });
         return;
     }
     auto steps = std::make_shared<QJsonArray>(QJsonDocument::fromJson(f.readAll()).array());

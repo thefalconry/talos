@@ -284,6 +284,18 @@ QString takeShared()
 #endif
 }
 
+void setLightSystemBars(bool light)
+{
+#if defined(Q_OS_ANDROID)
+    const QJniObject activity = QNativeInterface::QAndroidApplication::context();
+    QJniObject::callStaticMethod<void>("dev/talos/client/TalosActivity", "setLightBars",
+                                       "(Landroid/app/Activity;Z)V", activity.object(),
+                                       jboolean(light));
+#else
+    Q_UNUSED(light);
+#endif
+}
+
 void askForNotifications()
 {
 #if defined(Q_OS_ANDROID)

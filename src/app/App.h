@@ -47,6 +47,7 @@ class App : public QObject
     Q_PROPERTY(talos::Desktop *desktop READ desktop CONSTANT)
     Q_PROPERTY(talos::ScreenControl *screen READ screen CONSTANT)
     Q_PROPERTY(talos::GlobalShortcut *shortcut READ shortcut CONSTANT)
+    Q_PROPERTY(bool lightSystemBars READ lightSystemBars WRITE setLightSystemBars NOTIFY systemBarsChanged)
     Q_PROPERTY(bool serviceSupported READ serviceSupported CONSTANT)
     Q_PROPERTY(QString serviceState READ serviceState NOTIFY serviceChanged)
     Q_PROPERTY(bool serviceLingering READ serviceLingering NOTIFY serviceChanged)
@@ -79,6 +80,8 @@ public:
     Desktop *desktop() { return &m_desktop; }
     ScreenControl *screen() { return &m_screen; }
     GlobalShortcut *shortcut() { return &m_shortcut; }
+    bool lightSystemBars() const { return m_lightBars; }
+    void setLightSystemBars(bool light);
     bool serviceSupported() const;
     QString serviceState() const;
     bool serviceLingering() const;
@@ -168,6 +171,7 @@ signals:
     void openChatRequested(const QString &chatId);
     /// The quick-ask window was called for (shortcut, or `talos --quick`).
     void quickAskRequested();
+    void systemBarsChanged();
     /// A command from the Mac's menu bar that the window carries out:
     /// about, settings, palette, find, sidebar or shortcuts.
     void menuCommand(const QString &command);
@@ -189,6 +193,7 @@ private:
     void applyColorScheme();
     void takeShared();
     QTimer m_uiBeat;
+    bool m_lightBars = true;
     QElapsedTimer m_attached; ///< running since the window was handed over
     QTranslator m_translator;
     /// Set while the lock is being removed, so credentials are written back
