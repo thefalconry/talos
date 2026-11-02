@@ -1778,7 +1778,12 @@ private slots:
         QVERIFY2(BridgeClient::checkPkcs12(bytes(u"legacy.p12"_s), u"pw"_s, &why),
                  qPrintable(why));
         QVERIFY(!BridgeClient::checkPkcs12(bytes(u"legacy.p12"_s), u"wrong"_s, &why));
-        QVERIFY(why.contains(u"password"_s));
+        QCOMPARE(why, u"That password doesn't open this certificate."_s);
+        // Not a bundle at all, and nothing at all, each say so.
+        QVERIFY(!BridgeClient::checkPkcs12(bytes(u"c.pem"_s), u"pw"_s, &why));
+        QVERIFY2(why.contains(u"isn't a PKCS#12"_s), qPrintable(why));
+        QVERIFY(!BridgeClient::checkPkcs12(QByteArray(), u"pw"_s, &why));
+        QVERIFY(why.contains(u"empty"_s));
         // Turning the legacy provider on must not cost the modern one.
         QVERIFY(BridgeClient::checkPkcs12(bytes(u"modern.p12"_s), u"pw"_s, &why));
     }

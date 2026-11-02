@@ -43,6 +43,46 @@ C.ApplicationWindow {
            ? App.session.chat.title + " · " + App.session.botName : App.session.botName
 
     readonly property bool narrow: width < Theme.narrowBelow
+
+    // A phone draws the app edge to edge: the status bar, the gesture bar
+    // and the on-screen keyboard sit on top of the window, and the layout
+    // keeps its controls out from under them.
+    readonly property var safe: contentItem.SafeArea.margins
+    /// How much of the window the keyboard covers. Where the system has
+    /// already made the window shorter, the keyboard starts below it and
+    /// this is nothing.
+    readonly property real keyboardOverlap: {
+        if (!App.mobile || !Qt.inputMethod.visible)
+            return 0
+        const r = Qt.inputMethod.keyboardRectangle
+        return r.height > 0 ? Math.max(0, Math.min(height, height - r.y)) : 0
+    }
+    readonly property real insetTop: App.mobile ? safe.top : 0
+    readonly property real insetBottom: App.mobile ? Math.max(safe.bottom, keyboardOverlap) : 0
+    readonly property real insetLeft: App.mobile ? safe.left : 0
+    readonly property real insetRight: App.mobile ? safe.right : 0
+
+    /// Put the keyboard away and take focus off whatever had it: used when
+    /// a phone moves to another screen, where a hidden field would otherwise
+    /// keep the keyboard up.
+    function dropFocus() {
+        if (!App.mobile)
+            return
+        Qt.inputMethod.commit()
+        Qt.inputMethod.hide()
+        contentItem.forceActiveFocus()
+    }
+    onSettingsOpenChanged: dropFocus()
+    Connections {
+        target: App.session
+        function onSelectionChanged() { root.dropFocus() }
+    }
+    // The bar icons follow the theme: dark icons on the light theme.
+    Binding {
+        target: App
+        property: "lightSystemBars"
+        value: !Theme.dark
+    }
     readonly property bool connected: App.session.conn === Session.Connected
     property bool settingsOpen: false
     property string settingsSection: "connection"
@@ -252,6 +292,10 @@ C.ApplicationWindow {
 
     Loader {
         anchors.fill: parent
+        anchors.topMargin: root.insetTop
+        anchors.bottomMargin: root.insetBottom
+        anchors.leftMargin: root.insetLeft
+        anchors.rightMargin: root.insetRight
         active: !App.store.hasProfile
         visible: active
         sourceComponent: ConnectPage { }
@@ -260,6 +304,10 @@ C.ApplicationWindow {
     Item {
         id: shell
         anchors.fill: parent
+        anchors.topMargin: root.insetTop
+        anchors.bottomMargin: root.insetBottom
+        anchors.leftMargin: root.insetLeft
+        anchors.rightMargin: root.insetRight
         visible: App.store.hasProfile
 
         // Hidden while settings covers it. Covering it is not enough: a tap

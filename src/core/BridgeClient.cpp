@@ -62,6 +62,20 @@ bool enableLegacyCiphers()
     return enabled;
 }
 
+/// What OpenSSL said about the last bundle that wouldn't open. Qt passes
+/// it to the log and nowhere else, so it is caught there for the person
+/// who needs it.
+QString g_pkcs12Reason;
+QtMessageHandler g_previousHandler = nullptr;
+
+void catchTlsWarning(QtMsgType type, const QMessageLogContext &context, const QString &message)
+{
+    if (context.category && qstrcmp(context.category, "qt.tlsbackend.ossl") == 0)
+        g_pkcs12Reason = message;
+    if (g_previousHandler)
+        g_previousHandler(type, context, message);
+}
+
 bool readPkcs12(const QByteArray &p12, const QString &password, QSslKey *key,
                 QSslCertificate *cert, QList<QSslCertificate> *chain)
 {
@@ -163,15 +177,39 @@ bool BridgeClient::checkPkcs12(const QByteArray &p12, const QString &password, Q
     QSslKey key;
     QSslCertificate cert;
     QList<QSslCertificate> chain;
-    if (readPkcs12(p12, password, &key, &cert, &chain))
+    g_pkcs12Reason.clear();
+    g_previousHandler = qInstallMessageHandler(catchTlsWarning);
+    const bool opened = readPkcs12(p12, password, &key, &cert, &chain);
+    qInstallMessageHandler(g_previousHandler);
+    g_previousHandler = nullptr;
+    if (opened)
         return true;
-    if (error) {
-        *error = QSslSocket::supportsSsl()
-            ? u"Couldn't open the certificate. Check the password, and that the file is "
-              "a PKCS#12 bundle (.p12 or .pfx)."_s
-            : u"This build of Talos has no TLS support, so it can't open certificates "
-              "or make https connections."_s;
+    if (!error)
+        return false;
+    const QString why = g_pkcs12Reason;
+    if (!QSslSocket::supportsSsl()) {
+        *error = u"This build of Talos has no TLS support, so it can't open certificates "
+                 "or make https connections."_s;
+    } else if (p12.isEmpty()) {
+        *error = u"The file came through empty. Pick it again; if it is on a cloud drive, "
+                 "make it available offline first."_s;
+    } else if (why.contains("mac verify failure"_L1, Qt::CaseInsensitive)) {
+        *error = u"That password doesn't open this certificate."_s;
+    } else if (why.contains("unsupported"_L1, Qt::CaseInsensitive)) {
+        *error = u"This certificate is encrypted in a way this build can't read (%1). "
+                 "Exporting it again without `-legacy` makes it readable everywhere."_s
+                     .arg(why.section(u"error:"_s, 1).trimmed());
+    } else if (why.contains("asn1"_L1, Qt::CaseInsensitive)
+               || why.contains("wrong tag"_L1, Qt::CaseInsensitive)) {
+        *error = u"That file isn't a PKCS#12 bundle (.p12 or .pfx). A .pem or .crt holds "
+                 "only part of what is needed."_s;
+    } else {
+        *error = u"Couldn't open the certificate. Check the password, and that the file is "
+                 "a PKCS#12 bundle (.p12 or .pfx)."_s
+            + (why.isEmpty() ? QString() : u" (%1)"_s.arg(why));
     }
+    AppLog::warn("bridge", u"client certificate didn't open: %1"_s
+                               .arg(why.isEmpty() ? u"no reason given"_s : why));
     return false;
 }
 

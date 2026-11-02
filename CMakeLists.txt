@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(Talos
-    VERSION 0.3.0
+    VERSION 1.0.0
     DESCRIPTION "Talos, a desktop and mobile client for the Talon agent"
     LANGUAGES C CXX)
 
@@ -21,6 +21,9 @@ endif()
 # disables the check until the user sets one in Settings.
 set(TALOS_UPDATE_REPO "" CACHE STRING "GitHub owner/repo for client updates")
 option(TALOS_BUILD_TESTS "Build the unit tests" ON)
+# The Android application id. A different one installs beside the real app,
+# for trying a build on a phone without touching the copy in use there.
+set(TALOS_ANDROID_ID "dev.talos.client" CACHE STRING "Android application id")
 
 find_package(Qt6 6.8 REQUIRED COMPONENTS
     Core Gui Network Concurrent Qml Quick QuickControls2 Widgets)
@@ -224,9 +227,9 @@ set_target_properties(talos PROPERTIES
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
     MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/packaging/macos/Info.plist.in
     QT_ANDROID_PACKAGE_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/android
-    QT_ANDROID_PACKAGE_NAME dev.talos.client
+    QT_ANDROID_PACKAGE_NAME ${TALOS_ANDROID_ID}
     QT_ANDROID_VERSION_NAME ${PROJECT_VERSION}
-    QT_ANDROID_VERSION_CODE 6
+    QT_ANDROID_VERSION_CODE 7
     QT_ANDROID_TARGET_SDK_VERSION 35
     QT_ANDROID_MIN_SDK_VERSION 28
 )

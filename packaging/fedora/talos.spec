@@ -8,7 +8,7 @@
 %global debug_package %{nil}
 
 Name:           talos
-Version:        0.3.0
+Version:        1.0.0
 Release:        1%{?dist}
 Summary:        Desktop client for the Talon agent
 
@@ -69,6 +69,10 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/dev.talos.client.desk
 %{_datadir}/icons/hicolor/scalable/apps/dev.talos.client.svg
 
 %changelog
+* Mon Nov 02 2026 RisenID <94130108+RisenID@users.noreply.github.com> - 1.0.0-1
+- Android: room for the system bars and keyboard, sensible keyboard focus
+  and keys, a precise reason when a client certificate won't open
+
 * Mon Oct 12 2026 RisenID <94130108+RisenID@users.noreply.github.com> - 0.3.0-1
 - Credentials sealed by the app lock, limits on device control, pin and
   archive, formulas and flowcharts, quick-ask window, Spanish and Hindi

@@ -912,6 +912,13 @@ void App::applyLanguage()
     m_session.refreshChatList();
 }
 
+void App::setLightSystemBars(bool light)
+{
+    m_lightBars = light;
+    platform::setLightSystemBars(light);
+    emit systemBarsChanged();
+}
+
 void App::updateKeepAlive()
 {
     platform::setKeepAlive(m_store.prefBool(u"meshSharing"_s) && m_store.prefBool(u"meshBackground"_s));

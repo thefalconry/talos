@@ -168,8 +168,11 @@ ColumnLayout {
                 id: address
                 Layout.fillWidth: true
                 placeholderText: "talon.example.com  ·  192.168.1.20:19880"
-                inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoAutoUppercase
-                onAccepted: form.submit()
+                inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
+                // On a phone the keyboard's key moves on to the token; a
+                // half-filled form isn't submitted by it.
+                EnterKey.type: App.mobile ? Qt.EnterKeyNext : Qt.EnterKeyGo
+                onAccepted: App.mobile ? token.forceActiveFocus() : form.submit()
             }
         }
         RowLayout {
@@ -199,6 +202,7 @@ ColumnLayout {
                 echoMode: TextInput.Password
                 placeholderText: form.values.hasToken ? qsTr("Unchanged") : qsTr("Bridge token")
                 inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText | Qt.ImhSensitiveData
+                EnterKey.type: Qt.EnterKeyGo
                 onAccepted: form.submit()
             }
         }
@@ -267,6 +271,11 @@ ColumnLayout {
                         id: certPassword
                         Layout.fillWidth: true
                         echoMode: TextInput.Password
+                        // Exactly what is typed: no suggestions, no capitals,
+                        // nothing a keyboard holds back as "composing".
+                        inputMethodHints: Qt.ImhHiddenText | Qt.ImhSensitiveData
+                                          | Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
+                        EnterKey.type: Qt.EnterKeyDone
                         placeholderText: qsTr("Password for %1").arg(App.fileName(certPicker.chosen))
                         onAccepted: importButton.clicked()
                     }
@@ -276,6 +285,8 @@ ColumnLayout {
                         compact: true
                         text: qsTr("Open")
                         onClicked: {
+                            // A word still being composed isn't in .text yet.
+                            Qt.inputMethod.commit()
                             const r = App.importCertificate(certPicker.chosen, certPassword.text)
                             if (!r.ok) {
                                 form.error = r.error

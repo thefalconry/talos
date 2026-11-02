@@ -23,7 +23,11 @@ C.Popup {
                              : C.Popup.NoAutoClose
     width: Math.min(parent.width - (narrow ? 16 : 48), maxWidth)
     x: Math.round((parent.width - width) / 2)
-    y: narrow ? parent.height - height - 8
+    readonly property var win: C.ApplicationWindow.window
+    // On a phone it rises from the bottom, above the gesture bar and the
+    // keyboard, and never past the status bar.
+    y: narrow ? Math.max((win ? win.insetTop : 0) + 8,
+                         parent.height - height - 8 - (win ? win.insetBottom : 0))
               : Math.max(24, Math.round((parent.height - height) / 2.4))
 
     enter: Transition {
