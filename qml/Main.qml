@@ -54,25 +54,39 @@ C.ApplicationWindow {
     /// How much of the window the keyboard covers, as the system reports it
     /// this instant. Where the system has already made the window shorter,
     /// the keyboard starts below it and this is nothing.
+    /// Qt's Android backend reports keyboardRectangle in physical device
+    /// pixels while Window/Item geometry is in logical device-independent
+    /// pixels; scale by 1 / Screen.devicePixelRatio when physical coordinates
+    /// are detected, and measure against contentItem's bottom edge so OS
+    /// adjustResize and QML insetBottom never double-compensate.
     readonly property real keyboardNow: {
         if (!App.mobile || !Qt.inputMethod.visible)
             return 0
         const r = Qt.inputMethod.keyboardRectangle
-        return r.height > 0 ? Math.max(0, Math.min(height, height - r.y)) : 0
+        if (r.height <= 0)
+            return 0
+        const dpr = Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
+        const scale = (r.y > height || r.height > height || r.width > width) ? (1 / dpr) : 1
+        const contentBottom = contentItem.y + contentItem.height
+        const covered = contentBottom - r.y * scale
+        return covered > 1 ? Math.min(contentItem.height, covered) : 0
     }
     /// The same, steadied. Moving between a text field and a password
     /// field, the keyboard reports itself gone for a moment and then back.
     /// Following that blink would grow the page, pull every scrolled view
     /// back to the top, and leave the field being typed into behind the
     /// keyboard once it returns. So room for the keyboard is made at once,
-    /// and given back only once the keyboard has stayed away.
+    /// updated immediately while the keyboard stays visible (so an OS
+    /// adjustResize shrink is never double-counted), and given back only
+    /// once the keyboard has stayed away.
     property real keyboardOverlap: 0
     onKeyboardNowChanged: {
-        if (keyboardNow >= keyboardOverlap) {
+        if (keyboardNow >= keyboardOverlap
+                || (Qt.inputMethod.visible && Qt.inputMethod.keyboardRectangle.height > 0)) {
             keyboardSettle.stop()
             keyboardOverlap = keyboardNow
         } else {
-            keyboardSettle.interval = typingItem ? 400 : 120
+            keyboardSettle.interval = typingItem ? 180 : 80
             keyboardSettle.restart()
         }
     }
@@ -98,14 +112,33 @@ C.ApplicationWindow {
     onTypingItemChanged: revealSoon()
     onInsetBottomChanged: revealSoon()
     onHeightChanged: revealSoon()
-    function revealSoon() {
-        if (App.mobile && typingItem)
-            revealTimer.restart()
+    Connections {
+        target: Qt.inputMethod
+        function onVisibleChanged() {
+            if (Qt.inputMethod.visible)
+                root.revealSoon()
+        }
+        function onKeyboardRectangleChanged() {
+            if (Qt.inputMethod.visible)
+                root.revealSoon()
+        }
     }
-    // A beat later, once the layouts have taken the new size.
+    function revealSoon() {
+        if (App.mobile && typingItem) {
+            revealTimer.restart()
+            revealLateTimer.restart()
+        }
+    }
+    // A beat later, once the layouts have taken the new size, and once more
+    // after the platform IME open animation (~250ms on Android) finishes.
     Timer {
         id: revealTimer
         interval: 60
+        onTriggered: root.revealTyping()
+    }
+    Timer {
+        id: revealLateTimer
+        interval: 280
         onTriggered: root.revealTyping()
     }
     NumberAnimation {
@@ -125,10 +158,13 @@ C.ApplicationWindow {
         const views = []
         for (let view = item.parent; view; view = view.parent) {
             // A Flickable, ListView or the inside of a ScrollView, and not
-            // one the person is scrolling at this moment.
+            // one the person is dragging with a finger at this moment.
             if (view.contentY !== undefined && view.flickableDirection !== undefined
-                    && view.height > 0 && view.interactive && !view.moving)
+                    && view.height > 0 && view.interactive && !view.dragging) {
+                if (view.moving)
+                    view.cancelFlick()
                 views.push(view)
+            }
         }
         // One view glides there. Nested ones jump, each in turn, since
         // moving an inner one shifts where the field sits in the outer.
