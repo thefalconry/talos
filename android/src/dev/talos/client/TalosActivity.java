@@ -7,6 +7,7 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.view.View;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -25,6 +26,26 @@ public class TalosActivity extends QtActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Qt's QtInputDelegate.showKeyboard() installs a WindowInsetsAnimation.Callback
+        // on decorView every time focus enters a text field, clearing it only inside
+        // onEnd(). When the keyboard is already open and focus moves to another field,
+        // Android runs no IME open animation, onEnd() never fires, and the leaked
+        // callback stops DecorView from applying the IME bottom inset (collapsing
+        // adjustResize back to the full screen height). Keeping that callback cleared
+        // lets DecorView and QML observe consistent IME insets across focus switches.
+        if (Build.VERSION.SDK_INT >= 30 && getWindow() != null) {
+            final View decor = getWindow().getDecorView();
+            if (decor != null) {
+                decor.setOnApplyWindowInsetsListener((v, insets) -> {
+                    v.setWindowInsetsAnimationCallback(null);
+                    return v.onApplyWindowInsets(insets);
+                });
+                decor.getViewTreeObserver().addOnPreDrawListener(() -> {
+                    decor.setWindowInsetsAnimationCallback(null);
+                    return true;
+                });
+            }
+        }
         capture(getIntent());
     }
 

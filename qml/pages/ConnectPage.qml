@@ -13,7 +13,23 @@ Rectangle {
     /// The height the page has without the keyboard. The form is placed
     /// against this, so it stays put when the keyboard comes up and the
     /// page scrolls instead: the field just tapped doesn't slide away.
-    readonly property real steadyHeight: win ? height + win.insetBottom - win.barBottom : height
+    /// Hold steadyHeight while the keyboard is visible so an OS adjustResize
+    /// shrink does not shift card.y or contentHeight mid-session.
+    property real steadyHeight: height
+    function updateSteadyHeight() {
+        const full = win ? height + win.insetBottom - win.barBottom : height
+        if (!Qt.inputMethod.visible || full > steadyHeight)
+            steadyHeight = full
+    }
+    onHeightChanged: updateSteadyHeight()
+    onWidthChanged: steadyHeight = win ? height + win.insetBottom - win.barBottom : height
+    Connections {
+        target: Qt.inputMethod
+        function onVisibleChanged() {
+            if (!Qt.inputMethod.visible)
+                page.updateSteadyHeight()
+        }
+    }
 
     Flickable {
         anchors.fill: parent
