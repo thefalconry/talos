@@ -8,7 +8,7 @@
 %global debug_package %{nil}
 
 Name:           talos
-Version:        1.0.3
+Version:        1.0.4
 Release:        1%{?dist}
 Summary:        Desktop client for the Talon agent
 
@@ -69,6 +69,9 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/dev.talos.client.desk
 %{_datadir}/icons/hicolor/scalable/apps/dev.talos.client.svg
 
 %changelog
+* Wed Nov 04 2026 RisenID <94130108+RisenID@users.noreply.github.com> - 1.0.4-1
+- Android: keep the keyboard inset across field switches and scroll into view
+
 * Tue Nov 03 2026 RisenID <94130108+RisenID@users.noreply.github.com> - 1.0.3-1
 - Linux: touchpad scrolling follows the fingers from the start and glides
   on after a quick swipe, under both Wayland and X11 (issue #9)
