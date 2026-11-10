@@ -172,7 +172,7 @@ Rectangle {
                                     color: Theme.textTertiary
                                 }
                             }
-                            HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }
+                            MouseHover { id: hover; cursorShape: Qt.PointingHandCursor }
                             TapHandler {
                                 onTapped: {
                                     page.win.settingsSection = entry.modelData.id

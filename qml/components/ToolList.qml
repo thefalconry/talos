@@ -194,7 +194,7 @@ Column {
                 color: Theme.textTertiary
             }
         }
-        HoverHandler { id: headHover; cursorShape: Qt.PointingHandCursor }
+        MouseHover { id: headHover; cursorShape: Qt.PointingHandCursor }
         TapHandler { id: headTap; onTapped: root.toggle() }
     }
 
@@ -303,7 +303,7 @@ Column {
                                 color: Theme.textTertiary
                             }
                         }
-                        HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }
+                        MouseHover { id: hover; cursorShape: Qt.PointingHandCursor }
                         TapHandler { id: tap; onTapped: root.toggleEntry(entry.tool, entry.index) }
                     }
 

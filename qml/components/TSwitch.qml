@@ -43,5 +43,5 @@ T.Switch {
         }
     }
 
-    HoverHandler { cursorShape: Qt.PointingHandCursor }
+    MouseHover { cursorShape: Qt.PointingHandCursor }
 }

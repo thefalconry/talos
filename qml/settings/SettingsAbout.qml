@@ -23,7 +23,9 @@ Pane {
                 font.pixelSize: Theme.fs(24)
             }
             Text {
-                text: qsTr("Version %1 · Qt on %2").arg(App.version).arg(App.platform)
+                text: qsTr("Version %1 · Qt on %2").arg(App.version)
+                      .arg(({ android: "Android", ios: "iOS", macos: "macOS",
+                              windows: "Windows", linux: "Linux" })[App.platform] || App.platform)
                 color: Theme.textSecondary
                 font.pixelSize: Theme.body
             }
@@ -54,6 +56,7 @@ Pane {
 
         SettingRow {
             first: true
+            visible: !App.mobile
             clickable: true
             chevron: true
             iconName: "keyboard"
@@ -61,6 +64,7 @@ Pane {
             onClicked: pane.win.openShortcuts()
         }
         SettingRow {
+            first: App.mobile
             clickable: true
             chevron: true
             iconName: "list"

@@ -13,6 +13,8 @@ C.Menu {
     bottomMargin: (win ? win.insetBottom : 0) + 8
     leftMargin: (win ? win.insetLeft : 0) + 8
     rightMargin: (win ? win.insetRight : 0) + 8
+    onAboutToShow: if (win && win.popupOpened) win.popupOpened(control)
+    onClosed: if (win && win.popupClosed) win.popupClosed(control)
 
     background: Rectangle {
         implicitWidth: 230

@@ -105,7 +105,7 @@ Item {
                     height: Math.min(box / aspect, 380)
                     fillMode: Image.PreserveAspectCrop
 
-                    HoverHandler { cursorShape: Qt.PointingHandCursor }
+                    MouseHover { cursorShape: Qt.PointingHandCursor }
                     TapHandler { onTapped: row.win.showImage(shot.path, shot.name) }
                 }
             }
@@ -159,12 +159,17 @@ Item {
                             }
                         }
                     }
-                    HoverHandler { id: chipHover; cursorShape: Qt.PointingHandCursor }
+                    MouseHover { id: chipHover; cursorShape: Qt.PointingHandCursor }
                     TapHandler {
                         acceptedButtons: Qt.LeftButton
                         onTapped: App.media.open(chip.modelData.url, chip.modelData.name)
+                        onLongPressed: {
+                            if (point.device.type === PointerDevice.TouchScreen)
+                                fileMenu.popup()
+                        }
                     }
                     TapHandler {
+                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                         acceptedButtons: Qt.RightButton
                         onTapped: fileMenu.popup()
                     }
@@ -341,5 +346,5 @@ Item {
         }
     }
 
-    HoverHandler { id: hover }
+    MouseHover { id: hover }
 }

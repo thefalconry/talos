@@ -349,7 +349,8 @@ Item {
                 }
             },
             TButton {
-                visible: downloadSheet.state === "done"
+                // A phone has no file manager to open at a folder.
+                visible: downloadSheet.state === "done" && !App.mobile
                 text: qsTr("Show in folder")
                 onClicked: {
                     App.links.revealFile(downloadSheet.file)

@@ -193,7 +193,7 @@ Item {
                                 font.pixelSize: Theme.small
                             }
                         }
-                        HoverHandler { onHoveredChanged: if (hovered) composer.commandIndex = commandRow.index }
+                        MouseHover { onHoveredChanged: if (hovered) composer.commandIndex = commandRow.index }
                         TapHandler {
                             onTapped: {
                                 composer.commandIndex = commandRow.index
@@ -456,7 +456,7 @@ Item {
                                 color: Theme.textTertiary
                             }
                         }
-                        HoverHandler { id: modelHover; cursorShape: Qt.PointingHandCursor }
+                        MouseHover { id: modelHover; cursorShape: Qt.PointingHandCursor }
                         TapHandler { id: modelTap; onTapped: composer.modelRequested() }
                     }
                     Item { Layout.fillWidth: true }

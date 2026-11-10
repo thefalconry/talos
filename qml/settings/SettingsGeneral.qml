@@ -20,12 +20,13 @@ Pane {
         }
     }
 
+    // Both are about a keyboard with keys; a phone has neither.
     Card {
+        visible: !App.mobile
         title: qsTr("Writing")
 
         SettingRow {
             first: true
-            visible: !App.mobile
             title: qsTr("Enter sends the message")
             subtitle: App.keys(qsTr("Shift+Enter starts a new line. With this off, Ctrl+Enter sends."))
             TSwitch {
@@ -34,7 +35,6 @@ Pane {
             }
         }
         SettingRow {
-            first: App.mobile
             clickable: true
             iconName: "keyboard"
             title: qsTr("Keyboard shortcuts")

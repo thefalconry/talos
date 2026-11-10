@@ -50,23 +50,43 @@ Item {
         opacity: 0.7
     }
 
-    RowLayout {
+    // On a narrow window a wide control (a row of choices) would squeeze
+    // the label into a few letters a line: there it goes underneath.
+    TextMetrics {
+        id: titleSize
+        font.pixelSize: Theme.body
+        text: root.title
+    }
+    readonly property real textRoom: layout.width - slot.implicitWidth - layout.columnSpacing
+                                     - (root.iconName !== "" ? 18 + layout.columnSpacing : 0)
+                                     - (root.chevron ? 16 + layout.columnSpacing : 0)
+    readonly property bool stacked: slot.implicitWidth > 0
+                                    && textRoom < Math.min(titleSize.advanceWidth + 2, 150)
+
+    GridLayout {
         id: layout
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
         anchors.leftMargin: 14
         anchors.rightMargin: 14
-        spacing: 12
+        columnSpacing: 12
+        rowSpacing: 8
+        columns: 4
 
         Icon {
             visible: root.iconName !== ""
             name: root.iconName
             size: 18
             color: root.danger ? Theme.danger : Theme.textSecondary
+            Layout.row: 0
+            Layout.column: 0
         }
         ColumnLayout {
             Layout.fillWidth: true
+            Layout.row: 0
+            Layout.column: 1
+            Layout.columnSpan: root.stacked ? 2 : 1
             spacing: 2
 
             Text {
@@ -89,16 +109,22 @@ Item {
         RowLayout {
             id: slot
             spacing: 8
+            Layout.row: root.stacked ? 1 : 0
+            Layout.column: root.stacked ? 1 : 2
+            Layout.columnSpan: root.stacked ? 2 : 1
+            Layout.maximumWidth: root.stacked ? layout.width : -1
         }
         Icon {
             visible: root.chevron
             name: "chevron-right"
             size: 16
             color: Theme.textTertiary
+            Layout.row: 0
+            Layout.column: 3
         }
     }
 
-    HoverHandler {
+    MouseHover {
         id: hover
         enabled: root.clickable
         cursorShape: Qt.PointingHandCursor

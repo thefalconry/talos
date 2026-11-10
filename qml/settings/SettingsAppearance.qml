@@ -62,7 +62,7 @@ Pane {
                             anchors.centerIn: parent
                         }
 
-                        HoverHandler { cursorShape: Qt.PointingHandCursor }
+                        MouseHover { cursorShape: Qt.PointingHandCursor }
                         TapHandler { onTapped: App.prefs.accent = swatch.modelData }
                     }
                 }

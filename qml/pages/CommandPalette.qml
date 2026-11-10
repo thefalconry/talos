@@ -244,7 +244,7 @@ C.Popup {
                         font.pixelSize: Theme.small
                     }
                 }
-                HoverHandler {
+                MouseHover {
                     onHoveredChanged: if (hovered) cmd.current = hit.index
                     cursorShape: Qt.PointingHandCursor
                 }

@@ -29,6 +29,8 @@ C.Popup {
     readonly property real roomLeft: win ? win.insetLeft : 0
     readonly property real roomRight: win ? win.insetRight : 0
     readonly property real gap: narrow ? 8 : 24
+    onAboutToShow: if (win && win.popupOpened) win.popupOpened(root)
+    onClosed: if (win && win.popupClosed) win.popupClosed(root)
     readonly property real roomWidth: (parent ? parent.width : 0) - roomLeft - roomRight
     readonly property real roomHeight: (parent ? parent.height : 0) - roomTop - roomBottom
 

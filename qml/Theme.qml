@@ -50,10 +50,14 @@ QtObject {
     readonly property color warning: dark ? "#E6B45C" : "#B26A00"
     readonly property color accentSoft: Qt.rgba(accent.r, accent.g, accent.b, dark ? 0.22 : 0.13)
 
+    // Android has no "monospace" or "serif" family to ask for by that name:
+    // asked for either, it answers with the ordinary sans.
     readonly property string mono: Qt.platform.os === "windows" ? "Consolas"
-                                 : Qt.platform.os === "osx" ? "Menlo" : "monospace"
+                                 : Qt.platform.os === "osx" ? "Menlo"
+                                 : Qt.platform.os === "android" ? "Droid Sans Mono" : "monospace"
     readonly property string serif: Qt.platform.os === "windows" || Qt.platform.os === "osx"
-                                    ? "Georgia" : "serif"
+                                    ? "Georgia"
+                                    : Qt.platform.os === "android" ? "Noto Serif" : "serif"
 
     /// The colours the system's own parts are drawn in: the scroll bars,
     /// tooltips and selections of the stock controls, links in rich text,

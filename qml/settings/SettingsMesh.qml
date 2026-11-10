@@ -38,6 +38,17 @@ Pane {
             }
         }
         SettingRow {
+            visible: App.prefs.meshSharing && App.prefs.meshBackground
+                     && App.platform === "android" && !App.batteryUnrestricted
+            title: qsTr("Keep it connected while the phone sleeps")
+            subtitle: qsTr("Android cuts a sleeping app off from the network to save battery, and the background connection with it. Allowing unrestricted battery use keeps this phone reachable.")
+            TButton {
+                compact: true
+                text: qsTr("Allow")
+                onClicked: App.askBatteryUnrestricted()
+            }
+        }
+        SettingRow {
             visible: App.prefs.meshSharing
             enabled: !pane.mesh.sandboxed
             title: qsTr("Let Talon control this device")

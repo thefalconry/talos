@@ -286,8 +286,16 @@ C.ApplicationWindow {
         // An open sheet or menu normally takes the back key itself. If one
         // didn't, close it when it can be closed; either way, back never
         // reaches past it to the page underneath.
-        for (const popup of [viewer, voiceScreen, commandPalette, shortcuts, renameSheet, confirmSheet]) {
+        for (const popup of [viewer, voiceScreen, commandPalette]) {
             if (popup.visible) {
+                popup.close()
+                return true
+            }
+        }
+        // The sheet or menu opened last, wherever in the app it belongs.
+        for (let i = openPopups.length - 1; i >= 0; --i) {
+            const popup = openPopups[i]
+            if (popup.visible && popup.closePolicy !== C.Popup.NoAutoClose) {
                 popup.close()
                 return true
             }
@@ -304,6 +312,17 @@ C.ApplicationWindow {
             return true
         }
         return false
+    }
+
+    /// The sheets and menus on screen, oldest first: each says when it
+    /// opens and closes, so the back key can close the newest.
+    property var openPopups: []
+    function popupOpened(popup) {
+        if (openPopups.indexOf(popup) < 0)
+            openPopups = openPopups.concat([popup])
+    }
+    function popupClosed(popup) {
+        openPopups = openPopups.filter(p => p !== popup)
     }
 
     function openPalette() { commandPalette.open() }

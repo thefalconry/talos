@@ -187,7 +187,7 @@ Pane {
                         color: line.tone
                         opacity: line.entry.level === "info" || line.entry.level === "debug" ? 0 : 1
                     }
-                    HoverHandler { id: lineHover; cursorShape: Qt.PointingHandCursor }
+                    MouseHover { id: lineHover; cursorShape: Qt.PointingHandCursor }
                     TapHandler {
                         onTapped: {
                             const next = Object.assign({}, pane.expanded)

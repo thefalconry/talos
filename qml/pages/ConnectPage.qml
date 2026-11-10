@@ -56,7 +56,9 @@ Rectangle {
                 Layout.alignment: Qt.AlignHCenter
             }
             Text {
-                text: qsTr("This app talks to a Talon daemon running the native bridge, on this computer or anywhere you can reach.")
+                text: App.mobile
+                      ? qsTr("This app talks to a Talon daemon running the native bridge, anywhere this phone can reach.")
+                      : qsTr("This app talks to a Talon daemon running the native bridge, on this computer or anywhere you can reach.")
                 color: Theme.textSecondary
                 font.pixelSize: Theme.body
                 wrapMode: Text.Wrap

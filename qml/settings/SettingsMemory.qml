@@ -72,7 +72,7 @@ Pane {
                     color: Theme.text
                     font.pixelSize: Theme.small + 1
                 }
-                HoverHandler { cursorShape: Qt.PointingHandCursor }
+                MouseHover { cursorShape: Qt.PointingHandCursor }
                 TapHandler {
                     onTapped: {
                         pane.kind = chip.modelData

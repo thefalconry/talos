@@ -70,7 +70,7 @@ Item {
                     color: Theme.textTertiary
                     anchors.verticalCenter: parent.verticalCenter
                 }
-                HoverHandler { cursorShape: Qt.PointingHandCursor }
+                MouseHover { cursorShape: Qt.PointingHandCursor }
                 TapHandler { onTapped: thinking.open = !thinking.open }
             }
             Item {

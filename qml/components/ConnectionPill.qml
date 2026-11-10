@@ -68,6 +68,6 @@ Item {
             Layout.fillWidth: true
         }
     }
-    HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }
+    MouseHover { id: hover; cursorShape: Qt.PointingHandCursor }
     TapHandler { id: tap; onTapped: root.clicked() }
 }

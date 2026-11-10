@@ -207,18 +207,25 @@ Rectangle {
                     }
                 }
 
-                HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }
+                MouseHover { id: hover; cursorShape: Qt.PointingHandCursor }
+                // A finger opens the chat with a tap and its menu with a
+                // long press, both from the one handler: opening the chat
+                // hides this list on a phone, and a second handler would
+                // not see the finger lift.
                 TapHandler {
                     acceptedButtons: Qt.LeftButton
                     onTapped: root.win.openChat(row.chatId)
+                    onLongPressed: {
+                        if (point.device.type === PointerDevice.TouchScreen)
+                            menu.popup()
+                    }
                 }
+                // A finger has no buttons, so a handler for the right one
+                // answers every touch unless told which devices it is for.
                 TapHandler {
+                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                     acceptedButtons: Qt.RightButton
                     onTapped: menu.popup()
-                }
-                TapHandler {
-                    acceptedDevices: PointerDevice.TouchScreen
-                    onLongPressed: menu.popup()
                 }
 
                 TMenu {
@@ -316,7 +323,7 @@ Rectangle {
                         font.pixelSize: Theme.small + 1
                     }
                 }
-                HoverHandler { id: archiveHover; cursorShape: Qt.PointingHandCursor }
+                MouseHover { id: archiveHover; cursorShape: Qt.PointingHandCursor }
                 TapHandler { onTapped: App.session.chats.archived = !App.session.chats.archived }
             }
         }

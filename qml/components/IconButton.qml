@@ -2,6 +2,7 @@
 import QtQuick
 import QtQuick.Controls.Basic as C
 import QtQuick.Templates as T
+import Talos.Native
 
 T.Button {
     id: control
@@ -22,6 +23,18 @@ T.Button {
     focusPolicy: Qt.TabFocus
 
     Accessible.name: tip
+
+    // A fingertip is wider than the button is drawn: on a phone it answers
+    // a little way beyond its edges, 44 pixels across at the least.
+    containmentMask: App.mobile ? reach : null
+    Item {
+        id: reach
+        readonly property real by: Math.max(0, (44 - Math.min(control.width, control.height)) / 2)
+        x: -by
+        y: -by
+        width: control.width + 2 * by
+        height: control.height + 2 * by
+    }
 
     background: Rectangle {
         radius: control.accent ? width / 2 : 9
@@ -50,5 +63,5 @@ T.Button {
     C.ToolTip.delay: 600
     C.ToolTip.text: tip
 
-    HoverHandler { cursorShape: Qt.PointingHandCursor }
+    MouseHover { cursorShape: Qt.PointingHandCursor }
 }

@@ -50,7 +50,7 @@ Item {
             return "M9 1.5A7.5 7.5 0 " + (turn > 0.5 ? 1 : 0) + " 1 " + x.toFixed(3) + " " + y.toFixed(3)
         }
     }
-    HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }
+    MouseHover { id: hover; cursorShape: Qt.PointingHandCursor }
     TapHandler { onTapped: popup.open() }
 
     C.ToolTip.visible: hover.hovered && !popup.visible
@@ -63,6 +63,9 @@ Item {
         y: root.height + 6
         width: 270
         padding: 14
+        readonly property var win: C.ApplicationWindow.window
+        onAboutToShow: if (win && win.popupOpened) win.popupOpened(popup)
+        onClosed: if (win && win.popupClosed) win.popupClosed(popup)
 
         background: Rectangle {
             radius: 12

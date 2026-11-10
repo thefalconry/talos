@@ -67,7 +67,7 @@ Column {
                     selectedTextColor: Theme.text
                     onLinkActivated: link => root.linkActivated(link)
 
-                    HoverHandler {
+                    MouseHover {
                         cursorShape: parent.hoveredLink !== "" ? Qt.PointingHandCursor
                                                                : Qt.IBeamCursor
                     }
@@ -95,7 +95,7 @@ Column {
                         color: root.color
                         font.pixelSize: Theme.reading + 2
                         font.italic: true
-                        font.family: "serif"
+                        font.family: Theme.serif
                         selectionColor: Theme.accentSoft
                         selectedTextColor: Theme.text
                     }
@@ -147,7 +147,7 @@ Column {
                         color: Theme.textTertiary
                         font.pixelSize: Theme.small
                         TapHandler { onTapped: chartHolder.showSource = !chartHolder.showSource }
-                        HoverHandler { cursorShape: Qt.PointingHandCursor }
+                        MouseHover { cursorShape: Qt.PointingHandCursor }
                     }
                 }
             }

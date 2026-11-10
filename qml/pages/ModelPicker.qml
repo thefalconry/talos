@@ -111,7 +111,7 @@ Sheet {
                         color: Theme.accent
                     }
                 }
-                HoverHandler { id: rowHover; cursorShape: Qt.PointingHandCursor }
+                MouseHover { id: rowHover; cursorShape: Qt.PointingHandCursor }
                 TapHandler {
                     onTapped: {
                         App.session.setModel(sheet.chatId, modelRow.modelData.id)
@@ -162,7 +162,7 @@ Sheet {
                         color: effort.on ? Theme.text : Theme.textSecondary
                         font.pixelSize: Theme.small + 1
                     }
-                    HoverHandler { id: effortHover; cursorShape: Qt.PointingHandCursor }
+                    MouseHover { id: effortHover; cursorShape: Qt.PointingHandCursor }
                     TapHandler {
                         onTapped: {
                             App.session.setEffort(sheet.chatId, effort.modelData)
@@ -225,7 +225,7 @@ Sheet {
                             anchors.verticalCenter: parent.verticalCenter
                         }
                     }
-                    HoverHandler { id: backendHover; cursorShape: Qt.PointingHandCursor }
+                    MouseHover { id: backendHover; cursorShape: Qt.PointingHandCursor }
                     TapHandler {
                         enabled: sheet.switching === "" && !backend.on
                         onTapped: {
