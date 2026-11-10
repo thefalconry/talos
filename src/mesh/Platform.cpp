@@ -273,6 +273,29 @@ void setKeepAlive(bool on)
 #endif
 }
 
+bool batteryUnrestricted()
+{
+#if defined(Q_OS_ANDROID)
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    return QJniObject::callStaticMethod<jboolean>("dev/talos/client/MeshHost", "unrestricted",
+                                                  "(Landroid/content/Context;)Z",
+                                                  context.object());
+#else
+    return true;
+#endif
+}
+
+void askBatteryUnrestricted()
+{
+#if defined(Q_OS_ANDROID)
+    QNativeInterface::QAndroidApplication::runOnAndroidMainThread([] {
+        const QJniObject context = QNativeInterface::QAndroidApplication::context();
+        QJniObject::callStaticMethod<void>("dev/talos/client/MeshHost", "askUnrestricted",
+                                           "(Landroid/content/Context;)V", context.object());
+    });
+#endif
+}
+
 QString takeShared()
 {
 #if defined(Q_OS_ANDROID)
@@ -348,68 +371,68 @@ QString installPackage(const QString &path)
 #endif
 }
 
-bool notifyNative(const QString &title, const QString &body)
+QString publishDownload(const QString &file, const QString &name)
 {
 #if defined(Q_OS_ANDROID)
-    static int nextId = 1;
-    const int id = nextId++;
-    QNativeInterface::QAndroidApplication::runOnAndroidMainThread([title, body, id] {
-        const QJniObject context = QNativeInterface::QAndroidApplication::context();
-        const QJniObject channelId = QJniObject::fromString(u"talon.messages"_s);
-        const QJniObject manager = context.callObjectMethod(
-            "getSystemService", "(Ljava/lang/String;)Ljava/lang/Object;",
-            QJniObject::fromString(u"notification"_s).object<jstring>());
-        if (!manager.isValid())
-            return;
-        // Creating a channel that already exists is a no-op.
-        const QJniObject channel(
-            "android/app/NotificationChannel", "(Ljava/lang/String;Ljava/lang/CharSequence;I)V",
-            channelId.object<jstring>(), QJniObject::fromString(u"Messages"_s).object<jstring>(),
-            jint(3)); // IMPORTANCE_DEFAULT
-        manager.callMethod<void>("createNotificationChannel",
-                                 "(Landroid/app/NotificationChannel;)V", channel.object());
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject uri = QJniObject::callStaticObjectMethod(
+        "dev/talos/client/Downloads", "publish",
+        "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;",
+        context.object(), QJniObject::fromString(file).object<jstring>(),
+        QJniObject::fromString(name).object<jstring>());
+    return uri.isValid() ? uri.toString() : QString();
+#else
+    Q_UNUSED(file);
+    Q_UNUSED(name);
+    return {};
+#endif
+}
 
-        QJniObject builder("android/app/Notification$Builder",
-                           "(Landroid/content/Context;Ljava/lang/String;)V", context.object(),
-                           channelId.object<jstring>());
-        const jint icon = QJniObject::getStaticField<jint>("android/R$drawable",
-                                                           "stat_notify_chat");
-        builder.callObjectMethod("setSmallIcon", "(I)Landroid/app/Notification$Builder;", icon);
-        builder.callObjectMethod("setContentTitle",
-                                 "(Ljava/lang/CharSequence;)Landroid/app/Notification$Builder;",
-                                 QJniObject::fromString(title).object<jstring>());
-        builder.callObjectMethod("setContentText",
-                                 "(Ljava/lang/CharSequence;)Landroid/app/Notification$Builder;",
-                                 QJniObject::fromString(body).object<jstring>());
-        builder.callObjectMethod("setAutoCancel", "(Z)Landroid/app/Notification$Builder;",
-                                 jboolean(true));
-        // Tapping it opens the app.
-        const QJniObject packages =
-            context.callObjectMethod("getPackageManager", "()Landroid/content/pm/PackageManager;");
-        const QJniObject package = context.callObjectMethod("getPackageName", "()Ljava/lang/String;");
-        const QJniObject open = packages.callObjectMethod(
-            "getLaunchIntentForPackage", "(Ljava/lang/String;)Landroid/content/Intent;",
-            package.object<jstring>());
-        if (open.isValid()) {
-            constexpr jint kImmutableUpdate = 0x04000000 | 0x08000000;
-            const QJniObject tap = QJniObject::callStaticObjectMethod(
-                "android/app/PendingIntent", "getActivity",
-                "(Landroid/content/Context;ILandroid/content/Intent;I)Landroid/app/PendingIntent;",
-                context.object(), jint(0), open.object(), kImmutableUpdate);
-            builder.callObjectMethod(
-                "setContentIntent",
-                "(Landroid/app/PendingIntent;)Landroid/app/Notification$Builder;", tap.object());
-        }
-        const QJniObject notification =
-            builder.callObjectMethod("build", "()Landroid/app/Notification;");
-        manager.callMethod<void>("notify", "(ILandroid/app/Notification;)V", jint(id),
-                                 notification.object());
+bool notifyNative(const QString &title, const QString &body, const QString &chatId)
+{
+#if defined(Q_OS_ANDROID)
+    QNativeInterface::QAndroidApplication::runOnAndroidMainThread([title, body, chatId] {
+        const QJniObject context = QNativeInterface::QAndroidApplication::context();
+        QJniObject::callStaticMethod<void>(
+            "dev/talos/client/Notify", "post",
+            "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
+            context.object(), QJniObject::fromString(title).object<jstring>(),
+            QJniObject::fromString(body).object<jstring>(),
+            QJniObject::fromString(chatId).object<jstring>());
     });
     return true;
 #else
     Q_UNUSED(title);
     Q_UNUSED(body);
+    Q_UNUSED(chatId);
     return false;
+#endif
+}
+
+void cancelChatNotification(const QString &chatId)
+{
+#if defined(Q_OS_ANDROID)
+    if (chatId.isEmpty())
+        return;
+    QNativeInterface::QAndroidApplication::runOnAndroidMainThread([chatId] {
+        const QJniObject context = QNativeInterface::QAndroidApplication::context();
+        QJniObject::callStaticMethod<void>(
+            "dev/talos/client/Notify", "cancel", "(Landroid/content/Context;Ljava/lang/String;)V",
+            context.object(), QJniObject::fromString(chatId).object<jstring>());
+    });
+#else
+    Q_UNUSED(chatId);
+#endif
+}
+
+QString takeOpenChat()
+{
+#if defined(Q_OS_ANDROID)
+    const QJniObject chat = QJniObject::callStaticObjectMethod(
+        "dev/talos/client/TalosActivity", "takeOpenChat", "()Ljava/lang/String;");
+    return chat.isValid() ? chat.toString() : QString();
+#else
+    return {};
 #endif
 }
 

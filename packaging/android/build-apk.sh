@@ -19,6 +19,8 @@
 #   TALOS_KEYSTORE_PASS_FILE  file holding its password
 #                                             [$TALOS_KEYSTORE.pass]
 #   TALOS_KEY_ALIAS key alias                 [talos]
+#   TALOS_ANDROID_ID  application id          [dev.talos.client]; another one
+#                                             installs beside the real app
 #
 # Android only installs an update over an app signed with the same key, so
 # the keystore is the app's identity: back it up, and never commit it.
@@ -87,6 +89,7 @@ rm -rf "$build/android-build/libs"
     -DQT_HOST_PATH="$qt_host" -DANDROID_SDK_ROOT="$sdk" -DANDROID_NDK_ROOT="$ndk" \
     -DCMAKE_BUILD_TYPE=Release -DTALOS_BUILD_TESTS=OFF \
     -DTALOS_UPDATE_REPO="${TALOS_UPDATE_REPO:-thefalconry/talos}" \
+    -DTALOS_ANDROID_ID="${TALOS_ANDROID_ID:-dev.talos.client}" \
     -DTALOS_ANDROID_OPENSSL_DIR="$openssl"
 cmake --build "$build"
 

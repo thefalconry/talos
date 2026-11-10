@@ -21,7 +21,11 @@ import java.util.ArrayList;
  * post notifications.
  */
 public class TalosActivity extends QtActivity {
+    /** On a notification's intent: the chat its reply arrived in. */
+    static final String EXTRA_CHAT = "dev.talos.client.chat";
+
     private static String pendingShare;
+    private static String pendingChat;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -56,9 +60,16 @@ public class TalosActivity extends QtActivity {
     }
 
     /** Remember a share until the app, which may still be starting, asks for it. */
+    @SuppressWarnings("deprecation")
     private static synchronized void capture(Intent intent) {
         if (intent == null)
             return;
+        String chat = intent.getStringExtra(EXTRA_CHAT);
+        if (chat != null) {
+            pendingChat = chat;
+            // Once only, as with a share below.
+            intent.removeExtra(EXTRA_CHAT);
+        }
         String action = intent.getAction();
         if (!Intent.ACTION_SEND.equals(action) && !Intent.ACTION_SEND_MULTIPLE.equals(action))
             return;
@@ -68,7 +79,9 @@ public class TalosActivity extends QtActivity {
             share.put("text", text == null ? "" : text.toString());
             JSONArray files = new JSONArray();
             if (Intent.ACTION_SEND_MULTIPLE.equals(action)) {
-                ArrayList<Uri> list = intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+                ArrayList<Uri> list = Build.VERSION.SDK_INT >= 33
+                    ? intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri.class)
+                    : intent.<Uri>getParcelableArrayListExtra(Intent.EXTRA_STREAM);
                 if (list != null) {
                     for (Uri uri : list) {
                         if (uri != null)
@@ -76,7 +89,9 @@ public class TalosActivity extends QtActivity {
                     }
                 }
             } else {
-                Uri uri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+                Uri uri = Build.VERSION.SDK_INT >= 33
+                    ? intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri.class)
+                    : intent.<Uri>getParcelableExtra(Intent.EXTRA_STREAM);
                 if (uri != null)
                     files.put(uri.toString());
             }
@@ -87,6 +102,13 @@ public class TalosActivity extends QtActivity {
         }
         // Once only: a rotated screen must not deliver it again.
         intent.setAction(Intent.ACTION_MAIN);
+    }
+
+    /** The chat whose notification was tapped since the last call, or null. */
+    public static synchronized String takeOpenChat() {
+        String chat = pendingChat;
+        pendingChat = null;
+        return chat;
     }
 
     /** What was shared since the last call, as JSON, or null. */
@@ -101,10 +123,18 @@ public class TalosActivity extends QtActivity {
      * have to suit its theme: dark icons over the light theme, light ones
      * over the dark.
      */
+    @SuppressWarnings("deprecation")
     public static void setLightBars(final Activity activity, final boolean light) {
-        if (Build.VERSION.SDK_INT < 30)
-            return;
         activity.runOnUiThread(() -> {
+            if (Build.VERSION.SDK_INT < 30) {
+                // Android 9 and 10 know only the older flags.
+                View decor = activity.getWindow().getDecorView();
+                int flags = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+                    | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+                int now = decor.getSystemUiVisibility();
+                decor.setSystemUiVisibility(light ? now | flags : now & ~flags);
+                return;
+            }
             android.view.WindowInsetsController bars = activity.getWindow().getInsetsController();
             if (bars == null)
                 return;

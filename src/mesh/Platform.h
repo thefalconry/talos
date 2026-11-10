@@ -35,6 +35,12 @@ bool moveToBackground();
 /// Run the connection in a background service that outlives the window and
 /// starts again at boot, or stop it (Android). A no-op elsewhere.
 void setKeepAlive(bool on);
+/// Whether the system leaves this app its network while the phone sleeps
+/// (Android's battery optimisation, which otherwise cuts the background
+/// connection off). True where there is no such restriction.
+bool batteryUnrestricted();
+/// Ask the person, through the system's own prompt, to lift it (Android).
+void askBatteryUnrestricted();
 /// What another app shared to this one since the last call, as
 /// `{"text": …, "files": [content URIs]}` JSON; empty when nothing (Android).
 QString takeShared();
@@ -50,8 +56,17 @@ bool uiActive(const QString &dataDir);
 /// Hand an APK to the system installer, which asks the person holding the
 /// device (Android). Empty when it was handed over, otherwise the reason.
 QString installPackage(const QString &path);
-/// Post a system notification on platforms without a tray (Android).
-bool notifyNative(const QString &title, const QString &body);
+/// Copy a file into the phone's shared Downloads folder, the one its Files
+/// app shows, under `name` (Android 10 and later). Returns the new file's
+/// content URI; empty elsewhere, or when it could not be done.
+QString publishDownload(const QString &file, const QString &name);
+/// Post a system notification on platforms without a tray (Android). One
+/// given a chat replaces the last for that chat, and opens it when tapped.
+bool notifyNative(const QString &title, const QString &body, const QString &chatId = {});
+/// Take down the notification of a chat that is now on screen (Android).
+void cancelChatNotification(const QString &chatId);
+/// The chat whose notification was tapped since the last call (Android).
+QString takeOpenChat();
 
 /// Play the device's own ringtone for a few seconds (Android). False where
 /// the caller should make the noise itself.

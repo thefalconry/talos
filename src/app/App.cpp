@@ -30,6 +30,7 @@
 #include <QStyleHints>
 #include <QTimer>
 #include <QUrlQuery>
+#include <utility>
 
 namespace talos {
 
@@ -91,6 +92,7 @@ App::App(QObject *parent)
         // Started locked: this is the first moment there is a credential.
         if (m_session.conn() == Session::Idle && m_store.hasProfile())
             m_session.start();
+        openTappedChat();
     });
     connect(&m_lock, &AppLock::aboutToDisable, this, [this] {
         m_unsealing = true;
@@ -116,6 +118,8 @@ App::App(QObject *parent)
     connect(&m_session, &Session::notice, this, &App::toast);
     connect(&m_media, &MediaStore::notice, this, &App::toast);
     connect(&m_session, &Session::connChanged, this, &App::updateTray);
+    connect(&m_session, &Session::selectionChanged, this, &App::seenChat);
+    connect(this, &App::activeChanged, this, &App::seenChat);
 
     connect(&m_mesh, &MeshService::ringRequested, this, [this](const QString &message) {
         m_desktop.ring(message);
@@ -152,8 +156,15 @@ App::App(QObject *parent)
     m_uiBeat.setInterval(10'000);
     connect(&m_uiBeat, &QTimer::timeout, this,
             [this] { platform::markUiActive(m_store.dataDir(), true); });
-    if (mobile() && m_store.prefBool(u"notifications"_s))
-        QTimer::singleShot(1500, this, [] { platform::askForNotifications(); });
+    // Asked for once there is something to be notified about: connected,
+    // not on the first screen of an app that has yet to do anything.
+    connect(&m_session, &Session::connChanged, this, [this] {
+        if (m_askedForNotifications || !mobile() || m_session.conn() != Session::Connected
+            || !m_store.prefBool(u"notifications"_s))
+            return;
+        m_askedForNotifications = true;
+        QTimer::singleShot(1200, this, [] { platform::askForNotifications(); });
+    });
     connect(&m_shortcut, &GlobalShortcut::activated, this, &App::quickAskRequested);
     // The desktop remembers the keys; asking again at start is how a
     // session gets them back.
@@ -199,6 +210,8 @@ App::App(QObject *parent)
             platform::setSecureWindow(m_store.prefBool(key));
         else if (key == "meshSharing"_L1 || key == "meshBackground"_L1)
             updateKeepAlive();
+        else if (key == "notifications"_L1 && mobile() && m_store.prefBool(key))
+            platform::askForNotifications();
         else if (key == "language"_L1)
             applyLanguage();
         else if (key == "theme"_L1)
@@ -256,6 +269,7 @@ App::App(QObject *parent)
             // front, so this is where a start that was refused is retried.
             updateKeepAlive();
             takeShared();
+            openTappedChat();
         } else if (state == Qt::ApplicationHidden || state == Qt::ApplicationSuspended) {
             // Losing focus on a desktop is not "away"; being put in the
             // background on a phone is.
@@ -335,6 +349,16 @@ QString App::platform() const
 bool App::mobile() const
 {
     return platform::isMobile() || qEnvironmentVariableIsSet("TALOS_MOBILE");
+}
+
+bool App::batteryUnrestricted() const
+{
+    return platform::batteryUnrestricted();
+}
+
+void App::askBatteryUnrestricted()
+{
+    platform::askBatteryUnrestricted();
 }
 
 bool App::systemDark() const
@@ -816,10 +840,18 @@ bool App::clipboardHasImage() const
 
 bool App::saveText(const QUrl &file, const QString &text)
 {
-    QSaveFile f(file.isLocalFile() ? file.toLocalFile() : file.toString());
+    const QByteArray bytes = text.toUtf8();
+    if (!file.isLocalFile()) {
+        // A document picked through Android's own chooser: there is no
+        // folder to put a temporary file in, only the document to write.
+        QFile f(file.toString());
+        return f.open(QIODevice::WriteOnly | QIODevice::Truncate)
+            && f.write(bytes) == bytes.size();
+    }
+    QSaveFile f(file.toLocalFile());
     if (!f.open(QIODevice::WriteOnly))
         return false;
-    f.write(text.toUtf8());
+    f.write(bytes);
     return f.commit();
 }
 
@@ -852,7 +884,10 @@ QString App::relativeTime(qint64 ms) const
 
 QString App::fileName(const QUrl &file) const
 {
-    return QFileInfo(file.isLocalFile() ? file.toLocalFile() : file.path()).fileName();
+    // Android's content:// URIs say nothing of the name in their path; Qt
+    // asks the provider for it when given the whole URI.
+    return QFileInfo(file.isLocalFile() ? file.toLocalFile()
+                     : file.scheme() == "content"_L1 ? file.toString() : file.path()).fileName();
 }
 
 QString App::mapLink(double lat, double lon) const
@@ -955,6 +990,24 @@ void App::setLightSystemBars(bool light)
 void App::updateKeepAlive()
 {
     platform::setKeepAlive(m_store.prefBool(u"meshSharing"_s) && m_store.prefBool(u"meshBackground"_s));
+}
+
+void App::openTappedChat()
+{
+    const QString tapped = platform::takeOpenChat();
+    if (!tapped.isEmpty())
+        m_tappedChat = tapped;
+    // Behind the lock a notification is not a way in: the chat opens once
+    // the app has been unlocked.
+    if (m_tappedChat.isEmpty() || m_lock.locked())
+        return;
+    emit openChatRequested(std::exchange(m_tappedChat, {}));
+}
+
+void App::seenChat()
+{
+    if (m_active && !m_lock.locked())
+        platform::cancelChatNotification(m_session.selectedChatId());
 }
 
 void App::takeShared()

@@ -24,6 +24,10 @@ option(TALOS_BUILD_TESTS "Build the unit tests" ON)
 # The Android application id. A different one installs beside the real app,
 # for trying a build on a phone without touching the copy in use there.
 set(TALOS_ANDROID_ID "dev.talos.client" CACHE STRING "Android application id")
+# Android tells builds apart by this number and will not install one over a
+# higher one: 1.0.4 is 10004, so it rises with every release by itself.
+math(EXPR TALOS_ANDROID_VERSION_CODE
+    "${PROJECT_VERSION_MAJOR} * 10000 + ${PROJECT_VERSION_MINOR} * 100 + ${PROJECT_VERSION_PATCH}")
 
 find_package(Qt6 6.8 REQUIRED COMPONENTS
     Core Gui Network Concurrent Qml Quick QuickControls2 Widgets)
@@ -236,7 +240,7 @@ set_target_properties(talos PROPERTIES
     QT_ANDROID_PACKAGE_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/android
     QT_ANDROID_PACKAGE_NAME ${TALOS_ANDROID_ID}
     QT_ANDROID_VERSION_NAME ${PROJECT_VERSION}
-    QT_ANDROID_VERSION_CODE 11
+    QT_ANDROID_VERSION_CODE ${TALOS_ANDROID_VERSION_CODE}
     QT_ANDROID_TARGET_SDK_VERSION 35
     QT_ANDROID_MIN_SDK_VERSION 28
 )

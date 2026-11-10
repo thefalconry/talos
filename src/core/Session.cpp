@@ -20,6 +20,7 @@
 #include <QProcess>
 #include <QRegularExpression>
 #include <memory>
+#include <utility>
 
 namespace talos {
 
@@ -111,6 +112,8 @@ Session::Session(Store *store, QObject *parent, bool narrow)
 
     m_retry.setSingleShot(true);
     connect(&m_retry, &QTimer::timeout, this, &Session::start);
+    connect(this, &Session::uploadFinished, this, &Session::dropUploadTemp);
+    connect(this, &Session::uploadFailed, this, &Session::dropUploadTemp);
     m_failback.setInterval(5 * 60 * 1000);
     connect(&m_failback, &QTimer::timeout, this, &Session::probeConfigured);
 
@@ -284,15 +287,19 @@ void Session::setConn(Conn conn, const QString &error, bool fatal)
     if (conn != Connecting)
         m_connNote.clear();
     emit connChanged();
+    flushWaitingUploads();
 }
 
 void Session::dropClient()
 {
-    for (const auto &reply : std::as_const(m_uploads)) {
-        if (reply)
-            reply->abort();
+    // Say so for each upload cut short: nothing else would, and the file
+    // would sit in the message box "uploading" for good.
+    const auto uploads = std::exchange(m_uploads, {});
+    for (auto it = uploads.cbegin(); it != uploads.cend(); ++it) {
+        if (it.value())
+            it.value()->abort();
+        emit uploadFailed(it.key(), u"The connection dropped"_s);
     }
-    m_uploads.clear();
     if (!m_client)
         return;
     emit clientGone();
@@ -1838,21 +1845,62 @@ void Session::editQueued(const QString &text)
 QString Session::upload(const QUrl &file)
 {
     const QString id = u"up%1"_s.arg(++m_uploadSeq);
+    if (m_client && m_conn == Connected) {
+        startUpload(id, file);
+        return id;
+    }
+    // A phone drops the stream while another app is in front, and the file
+    // picker and "Share" are other apps: the file arrives in the moment the
+    // connection is being made again. Wait for it rather than refuse.
+    const bool comingBack = m_store->hasProfile() && !m_connFatal
+        && (m_conn == Connecting || m_retry.isActive());
+    if (!comingBack) {
+        QTimer::singleShot(0, this, [this, id] {
+            emit uploadFailed(id, u"Not connected to Talon"_s);
+        });
+        return id;
+    }
+    m_waitingUploads.append({id, file});
+    QTimer::singleShot(20'000, this, [this, id] {
+        const auto waiting = [&id](const auto &w) { return w.first == id; };
+        if (m_waitingUploads.removeIf(waiting) > 0)
+            emit uploadFailed(id, u"Not connected to Talon"_s);
+    });
+    return id;
+}
+
+void Session::flushWaitingUploads()
+{
+    if (m_waitingUploads.isEmpty())
+        return;
+    if (m_client && m_conn == Connected) {
+        const auto waiting = std::exchange(m_waitingUploads, {});
+        for (const auto &[id, file] : waiting)
+            startUpload(id, file);
+    } else if (m_conn == Error && m_connFatal) {
+        const auto waiting = std::exchange(m_waitingUploads, {});
+        for (const auto &w : waiting)
+            emit uploadFailed(w.first, u"Not connected to Talon"_s);
+    }
+}
+
+void Session::startUpload(const QString &id, const QUrl &file)
+{
     const auto failLater = [this, id](const QString &error) {
         QTimer::singleShot(0, this, [this, id, error] { emit uploadFailed(id, error); });
-        return id;
     };
-    if (!m_client || m_conn != Connected)
-        return failLater(u"Not connected to Talon"_s);
-
     // Android hands out content:// URIs, which QFile opens as they are.
     const QString path = file.isLocalFile() ? file.toLocalFile() : file.toString();
     auto *source = new QFile(path);
     if (!source->open(QIODevice::ReadOnly)) {
-        const QString error = u"Couldn't read %1: %2"_s.arg(QFileInfo(path).fileName(),
-                                                            source->errorString());
+        // A content:// URI this app was not granted fails without a reason.
+        const QString why = source->errorString();
+        const QString error = why.isEmpty() || why == "Unknown error"_L1
+            ? u"Couldn't read %1"_s.arg(QFileInfo(path).fileName())
+            : u"Couldn't read %1: %2"_s.arg(QFileInfo(path).fileName(), why);
         delete source;
-        return failLater(error);
+        failLater(error);
+        return;
     }
     QString name = QFileInfo(path).fileName();
     if (name.isEmpty())
@@ -1877,7 +1925,6 @@ QString Session::upload(const QUrl &file)
                 emit uploadProgress(id, double(sent) / double(total));
         });
     m_uploads.insert(id, reply);
-    return id;
 }
 
 QString Session::uploadClipboardImage()
@@ -1890,15 +1937,22 @@ QString Session::uploadClipboardImage()
     if (!image.save(path, "PNG"))
         return {};
     const QString id = upload(QUrl::fromLocalFile(path));
-    if (const auto reply = m_uploads.value(id))
-        connect(reply, &QNetworkReply::finished, this, [path] { QFile::remove(path); });
-    else
-        QFile::remove(path);
+    // Removed when the upload ends, however it ends.
+    m_uploadTemps.insert(id, path);
     return id;
+}
+
+void Session::dropUploadTemp(const QString &id)
+{
+    const QString path = m_uploadTemps.take(id);
+    if (!path.isEmpty())
+        QFile::remove(path);
 }
 
 void Session::cancelUpload(const QString &uploadId)
 {
+    m_waitingUploads.removeIf([&uploadId](const auto &w) { return w.first == uploadId; });
+    dropUploadTemp(uploadId);
     const auto reply = m_uploads.take(uploadId);
     if (reply)
         reply->abort();

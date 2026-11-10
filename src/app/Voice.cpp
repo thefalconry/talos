@@ -144,6 +144,19 @@ void Voice::listen()
         "putExtra", "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;",
         QJniObject::fromString(u"android.speech.extra.LANGUAGE_MODEL"_s).object<jstring>(),
         QJniObject::fromString(u"free_form"_s).object<jstring>());
+    // A phone without a recogniser (no Google app, say) has nothing to
+    // start; asking anyway throws, and the microphone would look busy for
+    // good.
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject packages =
+        context.callObjectMethod("getPackageManager", "()Landroid/content/pm/PackageManager;");
+    const QJniObject handler = intent.callObjectMethod(
+        "resolveActivity", "(Landroid/content/pm/PackageManager;)Landroid/content/ComponentName;",
+        packages.object());
+    if (!handler.isValid()) {
+        emit listenFailed(u"No speech recogniser is installed on this device"_s);
+        return;
+    }
     m_listening = true;
     emit changed();
     QtAndroidPrivate::startActivity(intent, 0x7A10,

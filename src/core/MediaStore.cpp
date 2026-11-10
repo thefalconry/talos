@@ -4,6 +4,7 @@
 #include "core/AppLog.h"
 #include "core/Files.h"
 #include "core/Session.h"
+#include "mesh/Platform.h"
 
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -153,8 +154,16 @@ void MediaStore::saveTo(const QString &path, const QString &name, const QUrl &de
     whenReady(path, name, [this, name, destination](const QString &local) {
         QString dest = destination.isLocalFile() ? destination.toLocalFile()
                                                  : destination.toString();
-        if (QFileInfo(dest).isDir())
+        if (QFileInfo(dest).isDir()) {
+            // A phone's own "Downloads" is a folder of this app's that no
+            // file manager lists; the shared one is reached another way.
+            if (QDir(dest) == QDir(downloadsDir())
+                && !platform::publishDownload(local, QFileInfo(name).fileName()).isEmpty()) {
+                emit notice(u"Saved %1 to Downloads"_s.arg(QFileInfo(name).fileName()));
+                return;
+            }
             dest = QDir(dest).filePath(QFileInfo(name).fileName());
+        }
         // Copied beside the destination first, so a copy that fails midway
         // doesn't cost the file it was going to replace.
         const QString part = dest + u".part"_s;

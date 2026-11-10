@@ -72,8 +72,8 @@ int runHeadless(QCoreApplication &app)
     // With the window closed this process is the one that hears a reply
     // arrive, so it is the one that says so.
     QObject::connect(&session, &Session::messageArrived, &app,
-                     [&store, &session](const QString &, const QString &title, const QString &text,
-                                        bool fromAssistant) {
+                     [&store, &session](const QString &chatId, const QString &title,
+                                        const QString &text, bool fromAssistant) {
         if (!fromAssistant || !store.prefBool(u"notifications"_s)
             || platform::uiActive(store.dataDir()))
             return;
@@ -84,7 +84,7 @@ int runHeadless(QCoreApplication &app)
         if (body.size() > 180)
             body = body.left(179) + u'…';
         platform::notifyNative(title.isEmpty() ? session.botName() : title,
-                               preview && !body.isEmpty() ? body : u"New message"_s);
+                               preview && !body.isEmpty() ? body : u"New message"_s, chatId);
     });
 #endif
     QObject::connect(&mesh, &MeshService::restartRequested, &app, [&app] {

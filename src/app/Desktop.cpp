@@ -268,6 +268,8 @@ void Desktop::notifyChat(const QString &chatId, const QString &title, const QStr
 {
     if (m_muted)
         return;
+    if (platform::notifyNative(title, body, chatId))
+        return;
 #if defined(TALOS_HAVE_DBUS)
     if (!platform::isMobile()) {
         const QString service = u"org.freedesktop.Notifications"_s;

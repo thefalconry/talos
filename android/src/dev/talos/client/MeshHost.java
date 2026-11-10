@@ -9,7 +9,10 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
+import android.net.Uri;
 import android.os.Build;
+import android.os.PowerManager;
+import android.provider.Settings;
 
 import org.qtproject.qt.android.bindings.QtService;
 
@@ -44,6 +47,32 @@ public class MeshHost extends QtService {
         start(context);
     }
 
+    /**
+     * Whether Android leaves this app its network while the phone sleeps.
+     * Otherwise Doze cuts the connection off, service or no service.
+     */
+    public static boolean unrestricted(Context context) {
+        PowerManager power = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+        return power != null && power.isIgnoringBatteryOptimizations(context.getPackageName());
+    }
+
+    /** The system's own question: may this app run unrestricted? */
+    public static void askUnrestricted(Context context) {
+        Intent ask = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                                Uri.parse("package:" + context.getPackageName()));
+        try {
+            context.startActivity(ask);
+        } catch (RuntimeException e) {
+            // A phone without that screen: the list it would have led to.
+            try {
+                context.startActivity(
+                    new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+            } catch (RuntimeException ignored) {
+                // Nothing to show.
+            }
+        }
+    }
+
     static void start(Context context) {
         try {
             context.startForegroundService(new Intent(context, MeshHost.class));
@@ -63,7 +92,8 @@ public class MeshHost extends QtService {
         PendingIntent tap = open == null ? null : PendingIntent.getActivity(
             this, 0, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         Notification notification = new Notification.Builder(this, CHANNEL)
-            .setSmallIcon(android.R.drawable.stat_notify_sync_noanim)
+            .setSmallIcon(Notify.smallIcon(this))
+            .setColor(Notify.ACCENT)
             .setContentTitle("Talos")
             .setContentText("Connected to Talon in the background")
             .setContentIntent(tap)

@@ -4,9 +4,11 @@
 #include "core/AppLog.h"
 #include "core/Models.h"
 #include "core/Session.h"
+#include "mesh/Platform.h"
 
 #include <QDesktopServices>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QJSEngine>
 #include <QRegularExpression>
@@ -246,6 +248,13 @@ void BridgeLinks::download(const QString &link, QJSValue done)
             return;
         }
         AppLog::info("links", u"downloaded %1 through the bridge connection"_s.arg(st->name));
+        // On a phone the folder written to is the app's own, which nothing
+        // else shows: the file moves to the Downloads the person can see.
+        const QString shared = platform::publishDownload(st->path, st->name);
+        if (!shared.isEmpty()) {
+            QFile::remove(st->path);
+            st->path = shared;
+        }
         reply(done, QVariantMap{{u"ok"_s, true}, {u"file"_s, st->path}, {u"name"_s, st->name},
                                 {u"size"_s, formatBytes(st->received)}});
     });
@@ -322,7 +331,9 @@ void BridgeLinks::openExternally(const QString &link)
 
 void BridgeLinks::openFile(const QString &file)
 {
-    QDesktopServices::openUrl(QUrl::fromLocalFile(file));
+    // A download on a phone is known by the URI the system gave it.
+    QDesktopServices::openUrl(file.startsWith("content://"_L1) ? QUrl(file)
+                                                               : QUrl::fromLocalFile(file));
 }
 
 void BridgeLinks::revealFile(const QString &file)

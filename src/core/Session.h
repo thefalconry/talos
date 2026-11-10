@@ -339,7 +339,14 @@ private:
     QVariantList m_devices;
     QVariantList m_locations;
 
+    void startUpload(const QString &id, const QUrl &file);
+    void flushWaitingUploads();
     QHash<QString, QPointer<QNetworkReply>> m_uploads;
+    /// Asked for while the connection was coming back; started once it is.
+    QList<std::pair<QString, QUrl>> m_waitingUploads;
+    /// Pasted images are uploaded from a copy in the cache: upload id to file.
+    QHash<QString, QString> m_uploadTemps;
+    void dropUploadTemp(const QString &id);
     int m_uploadSeq = 0;
     QTimer m_snapshotTimer;
 };

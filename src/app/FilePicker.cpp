@@ -436,8 +436,13 @@ void FilePicker::openQtDialog(QWindow *owner)
     }
     if (!m_filters.isEmpty())
         dialog->setNameFilters(m_filters);
+#if !defined(Q_OS_ANDROID)
+    // Android's chooser answers with a content:// URI that names a document
+    // by number, not by file name. A suffix added to that is the address of
+    // nothing, and the save fails after the (empty) file was made.
     if (!m_suffix.isEmpty())
         dialog->setDefaultSuffix(m_suffix);
+#endif
     if (m_current.isLocalFile()) {
         const QFileInfo offered(m_current.toLocalFile());
         dialog->setDirectory(offered.absolutePath());

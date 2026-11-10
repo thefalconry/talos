@@ -61,6 +61,7 @@ public class ApkInstaller extends BroadcastReceiver {
     }
 
     @Override
+    @SuppressWarnings("deprecation")
     public void onReceive(Context context, Intent intent) {
         if (!ACTION.equals(intent.getAction()))
             return;

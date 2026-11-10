@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The talon mark for the status bar: one colour, which the system tints. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <group
+        android:scaleX="0.62"
+        android:scaleY="0.62"
+        android:translateX="-8.2"
+        android:translateY="-8.2">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M17,20C30,16 44,22 47,36C48,42 45,47 40,49C43,42 40,35 33,32C36,38 33,44 27,46C30,39 26,33 19,31C22,28 22,24 17,20Z" />
+    </group>
+</vector>

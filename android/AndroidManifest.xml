@@ -23,6 +23,9 @@
          turns that on: a foreground service with a visible notification. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Asking, when the user wants that service, to be left the network
+         while the phone sleeps: Doze cuts a sleeping app off otherwise. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Starting that service again after a reboot, only if it was on. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Mesh install_apk: hands a package to the system installer, which

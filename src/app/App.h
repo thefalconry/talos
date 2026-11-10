@@ -59,6 +59,9 @@ class App : public QObject
     Q_PROPERTY(QString systemAccent READ systemAccent NOTIFY systemAccentChanged)
     Q_PROPERTY(bool systemAccentAvailable READ systemAccentAvailable NOTIFY systemAccentChanged)
     Q_PROPERTY(bool active READ active NOTIFY activeChanged)
+    /// Read again whenever the app comes back to the front, which is when
+    /// the answer to askBatteryUnrestricted() is in.
+    Q_PROPERTY(bool batteryUnrestricted READ batteryUnrestricted NOTIFY activeChanged)
     Q_PROPERTY(QVariantList approvals READ approvals NOTIFY approvalsChanged)
 public:
     explicit App(QObject *parent = nullptr);
@@ -99,6 +102,8 @@ public:
     QString systemAccent() const;
     bool systemAccentAvailable() const;
     bool active() const { return m_active; }
+    bool batteryUnrestricted() const;
+    Q_INVOKABLE void askBatteryUnrestricted();
     QVariantList approvals() const { return m_approvals; }
 
     // ── Connection profiles ─────────────────────────────────────────────────
@@ -204,6 +209,11 @@ private:
     /// Set while the lock is being removed, so credentials are written back
     /// unsealed although the lock still exists for a moment.
     bool m_unsealing = false;
+    bool m_askedForNotifications = false;
+    /// The chat of a tapped notification, held while the app is locked.
+    QString m_tappedChat;
+    void openTappedChat();
+    void seenChat();
 
     Store m_store;
     Session m_session;
