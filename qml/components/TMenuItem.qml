@@ -44,7 +44,8 @@ C.MenuItem {
         }
         Text {
             id: hintLabel
-            visible: control.hint !== ""
+            // A key chord means nothing where there are no keys.
+            visible: control.hint !== "" && !App.mobile
             text: App.keys(control.hint)
             font.pixelSize: Theme.small
             color: Theme.textTertiary

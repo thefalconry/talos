@@ -59,9 +59,10 @@ T.Button {
         }
     }
 
-    C.ToolTip.visible: hovered && tip !== "" && !down
-    C.ToolTip.delay: 600
-    C.ToolTip.text: tip
+    Tip {
+        text: control.tip
+        show: control.hovered && !control.down
+    }
 
     MouseHover { cursorShape: Qt.PointingHandCursor }
 }

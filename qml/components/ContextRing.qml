@@ -53,9 +53,10 @@ Item {
     MouseHover { id: hover; cursorShape: Qt.PointingHandCursor }
     TapHandler { onTapped: popup.open() }
 
-    C.ToolTip.visible: hover.hovered && !popup.visible
-    C.ToolTip.delay: 600
-    C.ToolTip.text: qsTr("Context: %1% used").arg(root.pct)
+    Tip {
+        text: qsTr("Context: %1% used").arg(root.pct)
+        show: hover.hovered && !popup.visible
+    }
 
     C.Popup {
         id: popup

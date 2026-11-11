@@ -24,10 +24,10 @@ C.Popup {
     readonly property var win: C.ApplicationWindow.window
     // What the status bar, the navigation bar (gestures or buttons, at the
     // bottom or the side) and the keyboard leave of the window.
-    readonly property real roomTop: win ? win.insetTop : 0
-    readonly property real roomBottom: win ? win.insetBottom : 0
-    readonly property real roomLeft: win ? win.insetLeft : 0
-    readonly property real roomRight: win ? win.insetRight : 0
+    readonly property real roomTop: win ? win.overTop : 0
+    readonly property real roomBottom: win ? win.overBottom : 0
+    readonly property real roomLeft: win ? win.overLeft : 0
+    readonly property real roomRight: win ? win.overRight : 0
     readonly property real gap: narrow ? 8 : 24
     onAboutToShow: if (win && win.popupOpened) win.popupOpened(root)
     onClosed: if (win && win.popupClosed) win.popupClosed(root)

@@ -58,8 +58,13 @@ C.Popup {
             return out
         }
         for (const a of actions) {
+            // A phone has no sidebar to toggle and no keys to list, nor
+            // any use for the chords the others go by.
+            if (App.mobile && (a.icon === "sidebar" || a.icon === "keyboard"))
+                continue
             if (q === "" || a.label.toLowerCase().includes(q) || a.keys.includes(q))
-                out.push({ kind: "action", label: a.label, icon: a.icon, hint: App.keys(a.hint), detail: "", run: a.run })
+                out.push({ kind: "action", label: a.label, icon: a.icon,
+                           hint: App.mobile ? "" : App.keys(a.hint), detail: "", run: a.run })
         }
         const chats = App.session.chatSummaries()
         let listed = 0
@@ -94,10 +99,10 @@ C.Popup {
     modal: true
     focus: true
     padding: 0
-    readonly property real roomTop: win ? win.insetTop : 0
-    readonly property real roomBottom: win ? win.insetBottom : 0
-    readonly property real roomLeft: win ? win.insetLeft : 0
-    readonly property real roomWidth: parent.width - roomLeft - (win ? win.insetRight : 0)
+    readonly property real roomTop: win ? win.overTop : 0
+    readonly property real roomBottom: win ? win.overBottom : 0
+    readonly property real roomLeft: win ? win.overLeft : 0
+    readonly property real roomWidth: parent.width - roomLeft - (win ? win.overRight : 0)
     width: Math.min(roomWidth - 24, 600)
     x: roomLeft + Math.round((roomWidth - width) / 2)
     y: roomTop + Math.max(12, Math.round((parent.height - roomTop - roomBottom) * 0.12))

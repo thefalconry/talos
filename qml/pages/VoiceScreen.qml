@@ -26,10 +26,10 @@ C.Popup {
     // Drawn edge to edge; the controls keep clear of the status bar, the
     // navigation bar and the keyboard.
     readonly property var win: C.ApplicationWindow.window
-    topPadding: win ? win.insetTop : 0
-    bottomPadding: win ? win.insetBottom : 0
-    leftPadding: win ? win.insetLeft : 0
-    rightPadding: win ? win.insetRight : 0
+    topPadding: win ? win.overTop : 0
+    bottomPadding: win ? win.overBottom : 0
+    leftPadding: win ? win.overLeft : 0
+    rightPadding: win ? win.overRight : 0
     closePolicy: C.Popup.CloseOnEscape
 
     onOpened: {

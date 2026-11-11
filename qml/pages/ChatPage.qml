@@ -301,7 +301,9 @@ Rectangle {
             Column {
                 visible: page.isEmpty
                 anchors.centerIn: parent
-                anchors.verticalCenterOffset: -30
+                // Lifted a little, but never past the top of a short window
+                // (a phone on its side), where it would cover the header.
+                anchors.verticalCenterOffset: -Math.max(0, Math.min(30, (parent.height - height) / 2))
                 width: page.column
                 spacing: 14
 

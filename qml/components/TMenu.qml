@@ -9,10 +9,10 @@ C.Menu {
     implicitWidth: 230
     // Kept clear of the status bar, the navigation bar and the keyboard.
     readonly property var win: C.ApplicationWindow.window
-    topMargin: (win ? win.insetTop : 0) + 8
-    bottomMargin: (win ? win.insetBottom : 0) + 8
-    leftMargin: (win ? win.insetLeft : 0) + 8
-    rightMargin: (win ? win.insetRight : 0) + 8
+    topMargin: (win ? win.overTop : 0) + 8
+    bottomMargin: (win ? win.overBottom : 0) + 8
+    leftMargin: (win ? win.overLeft : 0) + 8
+    rightMargin: (win ? win.overRight : 0) + 8
     onAboutToShow: if (win && win.popupOpened) win.popupOpened(control)
     onClosed: if (win && win.popupClosed) win.popupClosed(control)
 

@@ -101,6 +101,18 @@ C.ApplicationWindow {
     readonly property real insetLeft: App.mobile && safe ? safe.left : 0
     readonly property real insetRight: App.mobile && safe ? safe.right : 0
 
+    /// The same four for what is laid out over the whole window: sheets,
+    /// menus, the lock screen and the other popups. From Qt 6.9 the window
+    /// keeps its own content clear of the bars, so the insets above say
+    /// nothing of them (they are measured inside that content); a popup
+    /// is not inside it, and has to add where the content was put.
+    readonly property real overTop: App.mobile ? contentItem.y + insetTop : 0
+    readonly property real overBottom: App.mobile
+        ? height - contentItem.y - contentItem.height + insetBottom : 0
+    readonly property real overLeft: App.mobile ? contentItem.x + insetLeft : 0
+    readonly property real overRight: App.mobile
+        ? width - contentItem.x - contentItem.width + insetRight : 0
+
     /// The text field being typed into, if any.
     readonly property Item typingItem: {
         const item = activeFocusItem
@@ -221,11 +233,12 @@ C.ApplicationWindow {
         target: App.session
         function onSelectionChanged() { root.dropFocus() }
     }
-    // The bar icons follow the theme: dark icons on the light theme.
+    // The bar icons follow the theme: dark icons on the light theme. The
+    // image viewer is dark whatever the theme, and takes light ones.
     Binding {
         target: App
         property: "lightSystemBars"
-        value: !Theme.dark
+        value: !Theme.dark && !viewer.visible
     }
     readonly property bool connected: App.session.conn === Session.Connected
     property bool settingsOpen: false
