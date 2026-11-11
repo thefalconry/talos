@@ -8,7 +8,7 @@
 %global debug_package %{nil}
 
 Name:           talos
-Version:        1.0.4
+Version:        1.0.5
 Release:        1%{?dist}
 Summary:        Desktop client for the Talon agent
 
@@ -69,6 +69,10 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/dev.talos.client.desk
 %{_datadir}/icons/hicolor/scalable/apps/dev.talos.client.svg
 
 %changelog
+* Wed Nov 11 2026 RisenID <94130108+RisenID@users.noreply.github.com> - 1.0.5-1
+- Android: popups keep clear of the system bars and the keyboard; attachments
+  open and save to Downloads; a reply's notification opens its chat
+
 * Wed Nov 04 2026 RisenID <94130108+RisenID@users.noreply.github.com> - 1.0.4-1
 - Android: keep the keyboard inset across field switches and scroll into view
 
