@@ -8,7 +8,7 @@
 %global debug_package %{nil}
 
 Name:           talos
-Version:        1.0.5
+Version:        1.0.6
 Release:        1%{?dist}
 Summary:        Desktop client for the Talon agent
 
@@ -69,6 +69,10 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/dev.talos.client.desk
 %{_datadir}/icons/hicolor/scalable/apps/dev.talos.client.svg
 
 %changelog
+* Sat Nov 14 2026 RisenID <94130108+RisenID@users.noreply.github.com> - 1.0.6-1
+- Android: in-app updates, targets Android 17, wallpaper colours, bars in the
+  page's colour; a release can be skipped on every platform
+
 * Wed Nov 11 2026 RisenID <94130108+RisenID@users.noreply.github.com> - 1.0.5-1
 - Android: popups keep clear of the system bars and the keyboard; attachments
   open and save to Downloads; a reply's notification opens its chat

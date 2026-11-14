@@ -7,7 +7,7 @@
 ;   /DSourceDir=<path>     the staging folder that holds talos.exe and deployed Qt DLLs
 
 #ifndef AppVersion
-  #define AppVersion "1.0.5"
+  #define AppVersion "1.0.6"
 #endif
 #ifndef SourceDir
   #define SourceDir "dist\windows"
