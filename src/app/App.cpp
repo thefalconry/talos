@@ -158,6 +158,17 @@ App::App(QObject *parent)
             [this] { platform::markUiActive(m_store.dataDir(), true); });
     // Asked for once there is something to be notified about: connected,
     // not on the first screen of an app that has yet to do anything.
+    // Android 17 lets an app reach the local network (the home LAN, a VPN,
+    // a tailnet: where a Talon lives) only once the person has said yes.
+    // Asked as the first connection is made; the answer brings the app
+    // back to the front, which is when the connection is tried again.
+    connect(&m_session, &Session::connChanged, this, [this] {
+        if (m_askedForLocalNetwork || m_session.conn() != Session::Connecting
+            || platform::localNetworkAllowed())
+            return;
+        m_askedForLocalNetwork = true;
+        platform::askForLocalNetwork();
+    });
     connect(&m_session, &Session::connChanged, this, [this] {
         if (m_askedForNotifications || !mobile() || m_session.conn() != Session::Connected
             || !m_store.prefBool(u"notifications"_s))
@@ -229,6 +240,14 @@ App::App(QObject *parent)
 
     connect(qApp->styleHints(), &QStyleHints::colorSchemeChanged, this,
             &App::systemDarkChanged);
+    // A new wallpaper recolours the system; look again whenever the scheme
+    // changes or the app comes back to the front.
+    readWallpaper();
+    connect(qApp->styleHints(), &QStyleHints::colorSchemeChanged, this, &App::readWallpaper);
+    connect(this, &App::activeChanged, this, [this] {
+        if (m_active)
+            readWallpaper();
+    });
 #if defined(Q_OS_LINUX)
     talos::LinuxTheme::instance()->initSync();
     talos::LinuxTheme::instance()->startMonitoring();
@@ -382,7 +401,8 @@ QString App::systemAccent() const
             return c.name(QColor::HexRgb).toUpper();
     }
 #endif
-    return QString();
+    // On a phone: the wallpaper's own accent, in the tone for a light page.
+    return m_wallpaper.value(u"a600"_s).toString();
 }
 
 bool App::systemAccentAvailable() const
@@ -983,8 +1003,43 @@ void App::applyLanguage()
 void App::setLightSystemBars(bool light)
 {
     m_lightBars = light;
-    platform::setLightSystemBars(light);
+    if (m_barColor.isValid())
+        platform::setSystemBars(m_lightBars, m_barColor.rgba());
     emit systemBarsChanged();
+}
+
+void App::setSystemBarColor(const QColor &color)
+{
+    m_barColor = color;
+    if (m_barColor.isValid())
+        platform::setSystemBars(m_lightBars, m_barColor.rgba());
+    emit systemBarsChanged();
+}
+
+void App::readWallpaper()
+{
+    const QJsonObject tones = QJsonDocument::fromJson(platform::wallpaperColors().toUtf8()).object();
+    const QVariantMap now = tones.toVariantMap();
+    if (now == m_wallpaper)
+        return;
+    m_wallpaper = now;
+    emit systemAccentChanged();
+}
+
+bool App::allFilesAccess() const
+{
+    return platform::allFilesAllowed();
+}
+
+void App::askAllFilesAccess()
+{
+    platform::askForAllFiles();
+}
+
+void App::haptic(int kind)
+{
+    if (mobile() && m_store.prefBool(u"haptics"_s))
+        platform::haptic(kind);
 }
 
 void App::updateKeepAlive()

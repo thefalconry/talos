@@ -444,6 +444,10 @@ jobs:
           if [ ! -d "$ANDROID_SDK/ndk/$NDK_VERSION" ]; then
             echo y | "$ANDROID_SDK/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION"
           fi
+          # The app targets Android 17 (API 37) and is compiled against it.
+          if [ ! -d "$ANDROID_SDK/platforms/android-37.0" ]; then
+            echo y | "$ANDROID_SDK/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-37.0"
+          fi
           export ANDROID_NDK="$ANDROID_SDK/ndk/$NDK_VERSION"
           export ANDROID_NDK_ROOT="$ANDROID_NDK"
           export ANDROID_NDK_HOME="$ANDROID_NDK"

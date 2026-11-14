@@ -73,6 +73,28 @@ public class MeshHost extends QtService {
         }
     }
 
+    private static PowerManager.WakeLock awake;
+
+    /**
+     * Keep the processor running while a mesh command is in flight, and
+     * only then: a shell, a location fix or a large transfer must not be
+     * suspended halfway with the screen off. It lets go by itself after
+     * a quarter of an hour, whatever became of the command.
+     */
+    public static synchronized void holdAwake(Context context, boolean hold) {
+        if (awake == null) {
+            PowerManager power = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+            if (power == null)
+                return;
+            awake = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "talos:mesh-command");
+            awake.setReferenceCounted(false);
+        }
+        if (hold)
+            awake.acquire(15 * 60 * 1000L);
+        else if (awake.isHeld())
+            awake.release();
+    }
+
     static void start(Context context) {
         try {
             context.startForegroundService(new Intent(context, MeshHost.class));

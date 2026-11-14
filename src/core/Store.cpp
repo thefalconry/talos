@@ -44,7 +44,8 @@ QVariantMap defaultPrefs()
     return {
         // Appearance
         {u"theme"_s, u"system"_s},          // system | light | dark
-#if defined(Q_OS_LINUX)
+#if defined(Q_OS_LINUX) || defined(Q_OS_ANDROID)
+        // The desktop's accent, or on a phone the wallpaper's colours.
         {u"accent"_s, u"system"_s},
 #else
         {u"accent"_s, u"#C2622D"_s},
@@ -95,6 +96,8 @@ QVariantMap defaultPrefs()
         // Updates
         {u"updateRepo"_s, QStringLiteral(TALOS_UPDATE_REPO)},
         {u"updateAutoCheck"_s, true},
+        {u"updateSkipped"_s, QString()},     // a release the user passed over
+        {u"haptics"_s, true},                // a tick under the finger (phones)
     };
 }
 

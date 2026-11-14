@@ -48,6 +48,12 @@ class App : public QObject
     Q_PROPERTY(talos::ScreenControl *screen READ screen CONSTANT)
     Q_PROPERTY(talos::GlobalShortcut *shortcut READ shortcut CONSTANT)
     Q_PROPERTY(bool lightSystemBars READ lightSystemBars WRITE setLightSystemBars NOTIFY systemBarsChanged)
+    /// The colour behind the status and navigation bars: the page's own.
+    Q_PROPERTY(QColor systemBarColor READ systemBarColor WRITE setSystemBarColor NOTIFY systemBarsChanged)
+    /// Android's wallpaper colours (Material You) as tone to colour, or empty.
+    Q_PROPERTY(QVariantMap wallpaper READ wallpaper NOTIFY systemAccentChanged)
+    /// Whether mesh file commands can reach a phone's shared storage.
+    Q_PROPERTY(bool allFilesAccess READ allFilesAccess NOTIFY activeChanged)
     Q_PROPERTY(bool serviceSupported READ serviceSupported CONSTANT)
     Q_PROPERTY(QString serviceState READ serviceState NOTIFY serviceChanged)
     Q_PROPERTY(bool serviceLingering READ serviceLingering NOTIFY serviceChanged)
@@ -87,6 +93,14 @@ public:
     GlobalShortcut *shortcut() { return &m_shortcut; }
     bool lightSystemBars() const { return m_lightBars; }
     void setLightSystemBars(bool light);
+    QColor systemBarColor() const { return m_barColor; }
+    void setSystemBarColor(const QColor &color);
+    QVariantMap wallpaper() const { return m_wallpaper; }
+    bool allFilesAccess() const;
+    Q_INVOKABLE void askAllFilesAccess();
+    /// A tick under the finger, where there is one and the user wants it:
+    /// 0 a tap, 1 a long press, 2 done, 3 refused.
+    Q_INVOKABLE void haptic(int kind = 0);
     bool serviceSupported() const;
     QString serviceState() const;
     bool serviceLingering() const;
@@ -210,6 +224,10 @@ private:
     /// unsealed although the lock still exists for a moment.
     bool m_unsealing = false;
     bool m_askedForNotifications = false;
+    bool m_askedForLocalNetwork = false;
+    QColor m_barColor;
+    QVariantMap m_wallpaper;
+    void readWallpaper();
     /// The chat of a tapped notification, held while the app is locked.
     QString m_tappedChat;
     void openTappedChat();

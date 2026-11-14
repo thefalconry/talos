@@ -605,7 +605,9 @@ void MeshService::admit(const QJsonObject &event)
 
 void MeshService::run(const QJsonObject &event)
 {
-    ++m_inFlight;
+    // A phone must not doze off halfway through a command.
+    if (++m_inFlight == 1)
+        platform::holdAwake(true);
     emit changed();
     const QString id = event["id"_L1].toString();
     const QString name = event["name"_L1].toString();
@@ -696,6 +698,8 @@ void MeshService::answer(const QString &id, const QString &name, const QJsonObje
     }
     record(id, name, params, outcome, nowMs() - startedMs);
     m_inFlight = qMax(0, m_inFlight - 1);
+    if (m_inFlight == 0)
+        platform::holdAwake(false);
     if (!m_queue.isEmpty())
         run(m_queue.dequeue());
     emit changed();

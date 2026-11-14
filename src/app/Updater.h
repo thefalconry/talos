@@ -54,7 +54,11 @@ public:
                                     || m_state == QLatin1StringView("ready"); }
     QString lastChecked() const;
 
-    Q_INVOKABLE void check();
+    /// Look for a newer release. One the user chose to skip is passed over
+    /// by the scheduled checks, and offered again when they ask themselves.
+    Q_INVOKABLE void check(bool asked = true);
+    /// Pass over the release on offer.
+    Q_INVOKABLE void skip();
     Q_INVOKABLE void download();
     Q_INVOKABLE void cancel();
     /// Hand the downloaded file to the system (or show it in its folder).
@@ -74,6 +78,7 @@ signals:
 private:
     void set(const QString &state, const QString &error = {});
     void verify(const QString &path);
+    QString updateDir() const;
     QString repo() const;
 
     Store *m_store;

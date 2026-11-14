@@ -5,8 +5,14 @@ import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageInfo;
 import android.content.pm.PackageInstaller;
+import android.content.pm.PackageManager;
+import android.content.pm.Signature;
+import android.net.Uri;
 import android.os.Build;
+import android.provider.Settings;
+import android.widget.Toast;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -22,6 +28,64 @@ import java.io.OutputStream;
  */
 public class ApkInstaller extends BroadcastReceiver {
     private static final String ACTION = "dev.talos.client.INSTALL_STATUS";
+
+    /**
+     * This app's own update. The package must be this app, signed with the
+     * key this install was signed with: anything else is refused here,
+     * before the system is asked. Returns null once handed over.
+     */
+    public static String installUpdate(Context context, String path) {
+        PackageManager packages = context.getPackageManager();
+        try {
+            int flags = PackageManager.GET_SIGNING_CERTIFICATES;
+            PackageInfo update = packages.getPackageArchiveInfo(path, flags);
+            PackageInfo mine = packages.getPackageInfo(context.getPackageName(), flags);
+            if (update == null)
+                return "The download isn't an Android package.";
+            if (!context.getPackageName().equals(update.packageName))
+                return "The download is a different app (" + update.packageName + ").";
+            if (!sameSigner(signers(update), signers(mine)))
+                return "The update is signed with a different key from this install, so "
+                    + "Android would refuse it. Uninstall Talos and install the release by hand.";
+        } catch (Exception e) {
+            return "Couldn't read the downloaded package: " + e.getMessage();
+        }
+        if (!packages.canRequestPackageInstalls()) {
+            // Asked for now, not up front: an app that never updates
+            // itself never needs it.
+            try {
+                context.startActivity(
+                    new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                               Uri.parse("package:" + context.getPackageName()))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            } catch (RuntimeException e) {
+                // The message below says where to find it.
+            }
+            return "Allow Talos to install apps, then press Install again.";
+        }
+        return install(context, path);
+    }
+
+    private static Signature[] signers(PackageInfo info) {
+        if (info.signingInfo == null)
+            return null;
+        return info.signingInfo.hasMultipleSigners()
+            ? info.signingInfo.getApkContentsSigners()
+            : info.signingInfo.getSigningCertificateHistory();
+    }
+
+    /** True when the two share a certificate (a rotated key keeps its lineage). */
+    private static boolean sameSigner(Signature[] a, Signature[] b) {
+        if (a == null || b == null)
+            return false;
+        for (Signature x : a) {
+            for (Signature y : b) {
+                if (x.equals(y))
+                    return true;
+            }
+        }
+        return false;
+    }
 
     /** Returns null when the package was handed over, or what went wrong. */
     public static String install(Context context, String path) {
@@ -67,8 +131,18 @@ public class ApkInstaller extends BroadcastReceiver {
             return;
         int status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS,
                                         PackageInstaller.STATUS_FAILURE);
-        if (status != PackageInstaller.STATUS_PENDING_USER_ACTION)
+        if (status == PackageInstaller.STATUS_SUCCESS)
             return;
+        if (status != PackageInstaller.STATUS_PENDING_USER_ACTION) {
+            // Declined, or refused by the system: say which, where it is seen.
+            if (status != PackageInstaller.STATUS_FAILURE_ABORTED) {
+                String why = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE);
+                Toast.makeText(context, "Couldn't install the package"
+                                   + (why == null || why.isEmpty() ? "" : ": " + why),
+                               Toast.LENGTH_LONG).show();
+            }
+            return;
+        }
         // The system's own "install this app?" screen.
         Intent confirm = Build.VERSION.SDK_INT >= 33
             ? intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent.class)

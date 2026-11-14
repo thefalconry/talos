@@ -26,6 +26,19 @@
     <!-- Asking, when the user wants that service, to be left the network
          while the phone sleeps: Doze cuts a sleeping app off otherwise. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Awake for as long as a mesh command is running, and no longer. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- The mesh's "ring" plays as an alarm, so a phone on silent is still
+         found; from Android 17 a background service may make no other sound. -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- Android 17: reaching a Talon on the home network, a VPN or a
+         tailnet. Asked for when the app first connects. -->
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
+    <!-- Mesh file commands in the phone's shared storage, only if the user
+         turns device control on and then allows this in the system's own
+         settings. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
     <!-- Starting that service again after a reboot, only if it was on. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Mesh install_apk: hands a package to the system installer, which

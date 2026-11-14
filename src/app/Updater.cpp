@@ -35,12 +35,12 @@ Updater::Updater(Store *store, QObject *parent) : QObject(parent), m_store(store
     m_timer.setInterval(6 * 3600 * 1000);
     connect(&m_timer, &QTimer::timeout, this, [this] {
         if (m_store->prefBool(u"updateAutoCheck"_s) && m_state != "downloading"_L1)
-            check();
+            check(false);
     });
     m_timer.start();
     QTimer::singleShot(8000, this, [this] {
         if (m_store->prefBool(u"updateAutoCheck"_s) && m_state == "idle"_L1)
-            check();
+            check(false);
     });
     connect(m_store, &Store::prefChanged, this, [this](const QString &key) {
         if (key != "updateRepo"_L1 || m_state == "downloading"_L1)
@@ -138,7 +138,18 @@ int Updater::pickAsset(const QStringList &names, const QString &platform, const 
     return -1;
 }
 
-void Updater::check()
+void Updater::skip()
+{
+    if (m_state != "available"_L1 && m_state != "ready"_L1)
+        return;
+    m_store->setPref(u"updateSkipped"_s, m_latest);
+    if (!m_file.isEmpty())
+        QFile::remove(m_file);
+    m_file.clear();
+    set(u"current"_s);
+}
+
+void Updater::check(bool asked)
 {
     const QString r = repo();
     if (r.isEmpty()) {
@@ -153,7 +164,7 @@ void Updater::check()
     req.setHeader(QNetworkRequest::UserAgentHeader, u"talos/" TALOS_VERSION ""_s);
     req.setTransferTimeout(15'000);
     QNetworkReply *reply = m_nam.get(req);
-    connect(reply, &QNetworkReply::finished, this, [this, reply] {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, asked] {
         reply->deleteLater();
         m_lastCheckedMs = QDateTime::currentMSecsSinceEpoch();
         const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
@@ -170,6 +181,14 @@ void Updater::check()
         m_notes = rel["body"_L1].toString().trimmed();
         m_releaseUrl = httpsOnly(rel["html_url"_L1].toString());
         if (m_latest.isEmpty() || compareVersions(m_latest, currentVersion()) <= 0) {
+            // Nothing newer: what an earlier update left behind can go.
+            if (platform::name() == "android"_L1)
+                QDir(updateDir()).removeRecursively();
+            set(u"current"_s);
+            return;
+        }
+        // Skipped once is skipped until a newer one, unless the user asks.
+        if (!asked && m_latest == m_store->prefString(u"updateSkipped"_s)) {
             set(u"current"_s);
             return;
         }
@@ -214,13 +233,11 @@ void Updater::download()
 {
     if (m_state != "available"_L1)
         return;
-    // Android installs through its own package installer, which needs the
-    // file handed over by the browser's download manager.
-    if (m_assetUrl.isEmpty() || platform::name() == "android"_L1) {
+    if (m_assetUrl.isEmpty()) {
         openReleasePage();
         return;
     }
-    const QString dir = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+    const QString dir = updateDir();
     QDir().mkpath(dir);
     const QString path = QDir(dir).filePath(QFileInfo(m_assetName).fileName());
     auto *out = new QSaveFile(path);
@@ -328,10 +345,26 @@ void Updater::cancel()
         m_active->abort();
 }
 
+QString Updater::updateDir() const
+{
+    // A phone's update stays in the app's own cache: only the system
+    // installer needs to read it, and it is cleared once it is installed.
+    if (platform::name() == "android"_L1)
+        return QDir(m_store->cacheDir()).filePath(u"updates"_s);
+    return QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+}
+
 void Updater::install()
 {
     if (m_file.isEmpty())
         return;
+    if (platform::name() == "android"_L1) {
+        // Android's own installer takes it from here and asks the person.
+        // A refusal before that (not this app, another key, not yet
+        // allowed to install) is said where the button is.
+        set(u"ready"_s, platform::installUpdate(m_file));
+        return;
+    }
 #if defined(Q_OS_LINUX)
     // An AppImage or archive replaces the old one by hand: show where it is.
     QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(m_file).absolutePath()));

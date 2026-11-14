@@ -307,15 +307,111 @@ QString takeShared()
 #endif
 }
 
-void setLightSystemBars(bool light)
+void setSystemBars(bool light, unsigned int argb)
 {
 #if defined(Q_OS_ANDROID)
     const QJniObject activity = QNativeInterface::QAndroidApplication::context();
-    QJniObject::callStaticMethod<void>("dev/talos/client/TalosActivity", "setLightBars",
-                                       "(Landroid/app/Activity;Z)V", activity.object(),
-                                       jboolean(light));
+    QJniObject::callStaticMethod<void>("dev/talos/client/TalosActivity", "setBars",
+                                       "(Landroid/app/Activity;ZI)V", activity.object(),
+                                       jboolean(light), jint(argb));
 #else
     Q_UNUSED(light);
+    Q_UNUSED(argb);
+#endif
+}
+
+QString wallpaperColors()
+{
+#if defined(Q_OS_ANDROID)
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject colors = QJniObject::callStaticObjectMethod(
+        "dev/talos/client/TalosActivity", "wallpaperColors",
+        "(Landroid/content/Context;)Ljava/lang/String;", context.object());
+    return colors.isValid() ? colors.toString() : QString();
+#else
+    return {};
+#endif
+}
+
+void haptic(int kind)
+{
+#if defined(Q_OS_ANDROID)
+    const QJniObject activity = QNativeInterface::QAndroidApplication::context();
+    QJniObject::callStaticMethod<void>("dev/talos/client/TalosActivity", "haptic",
+                                       "(Landroid/app/Activity;I)V", activity.object(), jint(kind));
+#else
+    Q_UNUSED(kind);
+#endif
+}
+
+bool localNetworkAllowed()
+{
+#if defined(Q_OS_ANDROID)
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    return QJniObject::callStaticMethod<jboolean>(
+        "dev/talos/client/TalosActivity", "localNetworkAllowed", "(Landroid/content/Context;)Z",
+        context.object());
+#else
+    return true;
+#endif
+}
+
+void askForLocalNetwork()
+{
+#if defined(Q_OS_ANDROID)
+    QNativeInterface::QAndroidApplication::runOnAndroidMainThread([] {
+        const QJniObject activity = QNativeInterface::QAndroidApplication::context();
+        QJniObject::callStaticMethod<void>("dev/talos/client/TalosActivity", "askForLocalNetwork",
+                                           "(Landroid/app/Activity;)V", activity.object());
+    });
+#endif
+}
+
+bool allFilesAllowed()
+{
+#if defined(Q_OS_ANDROID)
+    return QJniObject::callStaticMethod<jboolean>("dev/talos/client/TalosActivity",
+                                                  "allFilesAllowed", "()Z");
+#else
+    return true;
+#endif
+}
+
+void askForAllFiles()
+{
+#if defined(Q_OS_ANDROID)
+    QNativeInterface::QAndroidApplication::runOnAndroidMainThread([] {
+        const QJniObject context = QNativeInterface::QAndroidApplication::context();
+        QJniObject::callStaticMethod<void>("dev/talos/client/TalosActivity", "askForAllFiles",
+                                           "(Landroid/content/Context;)V", context.object());
+    });
+#endif
+}
+
+void holdAwake(bool hold)
+{
+#if defined(Q_OS_ANDROID)
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    QJniObject::callStaticMethod<void>("dev/talos/client/MeshHost", "holdAwake",
+                                       "(Landroid/content/Context;Z)V", context.object(),
+                                       jboolean(hold));
+#else
+    Q_UNUSED(hold);
+#endif
+}
+
+QString installUpdate(const QString &path)
+{
+#if defined(Q_OS_ANDROID)
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject error = QJniObject::callStaticObjectMethod(
+        "dev/talos/client/ApkInstaller", "installUpdate",
+        "(Landroid/content/Context;Ljava/lang/String;)Ljava/lang/String;", context.object(),
+        QJniObject::fromString(path).object<jstring>());
+    return error.isValid() ? error.toString() : QString();
+#else
+    Q_UNUSED(path);
+    return u"Installing packages is only possible on Android."_s;
 #endif
 }
 
@@ -451,6 +547,15 @@ bool ringNative()
         uri.object());
     if (!tone.isValid())
         return false;
+    // As an alarm: it is meant to be heard on a phone left on silent, and
+    // from Android 17 it is the one sound a background service may make.
+    QJniObject attributes("android/media/AudioAttributes$Builder");
+    attributes.callObjectMethod("setUsage", "(I)Landroid/media/AudioAttributes$Builder;",
+                                jint(4)); // AudioAttributes.USAGE_ALARM
+    const QJniObject alarm =
+        attributes.callObjectMethod("build", "()Landroid/media/AudioAttributes;");
+    tone.callMethod<void>("setAudioAttributes", "(Landroid/media/AudioAttributes;)V",
+                          alarm.object());
     tone.callMethod<void>("play");
     QTimer::singleShot(8000, qApp, [tone] { tone.callMethod<void>("stop"); });
     return true;

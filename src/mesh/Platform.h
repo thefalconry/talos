@@ -44,9 +44,29 @@ void askBatteryUnrestricted();
 /// What another app shared to this one since the last call, as
 /// `{"text": …, "files": [content URIs]}` JSON; empty when nothing (Android).
 QString takeShared();
-/// Dark status- and gesture-bar icons for a light theme, or light ones for
-/// a dark theme (Android, which draws the app under those bars).
-void setLightSystemBars(bool light);
+/// Dark status- and navigation-bar icons for a light theme, or light ones
+/// for a dark one, over the app's own background colour (Android).
+void setSystemBars(bool light, unsigned int argb);
+/// The colours Android drew from the wallpaper, as JSON of tone to "#RRGGBB"
+/// ("a200".."a900" the accent, "n10".."n900" its neutral). Empty before
+/// Android 12 and everywhere else.
+QString wallpaperColors();
+/// A tick under the finger: 0 a tap, 1 a long press, 2 done, 3 refused.
+void haptic(int kind);
+/// Android 17 lets an app reach addresses on the local network only once
+/// the person has allowed it. True where there is no such rule.
+bool localNetworkAllowed();
+void askForLocalNetwork();
+/// Whether file commands can reach the phone's shared storage, and the
+/// system switch for it (Android 11 and later).
+bool allFilesAllowed();
+void askForAllFiles();
+/// Keep the processor awake while a mesh command runs (Android).
+void holdAwake(bool hold);
+/// Hand this app's own downloaded update to the system installer, after
+/// checking it is this app signed with this install's key (Android).
+/// Empty when it was handed over, otherwise why not.
+QString installUpdate(const QString &path);
 /// Ask for permission to post notifications where the system requires it.
 void askForNotifications();
 /// The window's process says whether it is in front, so the background
