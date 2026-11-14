@@ -57,6 +57,7 @@ Item {
         const text = input.text
         const files = uploads.filter(u => u.state === "done").map(u => u.attachment)
         sending = true
+        App.haptic(0)
         App.session.send(text, files, function (ok) {
             composer.sending = false
             if (!ok)

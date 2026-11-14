@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 import QtQuick
 import QtQuick.Templates as T
+import Talos.Native
 
 T.Switch {
     id: control
@@ -37,11 +38,13 @@ T.Switch {
             radius: 9
             y: 3
             x: control.checked ? 19 : 3
-            color: "#FFFFFF"
+            color: control.checked ? Theme.accentInk : "#FFFFFF"
 
             Behavior on x { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
         }
     }
+
+    onToggled: App.haptic(0)
 
     MouseHover { cursorShape: Qt.PointingHandCursor }
 }

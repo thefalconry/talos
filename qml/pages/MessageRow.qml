@@ -164,8 +164,10 @@ Item {
                         acceptedButtons: Qt.LeftButton
                         onTapped: App.media.open(chip.modelData.url, chip.modelData.name)
                         onLongPressed: {
-                            if (point.device.type === PointerDevice.TouchScreen)
+                            if (point.device.type === PointerDevice.TouchScreen) {
+                                App.haptic(1)
                                 fileMenu.popup()
+                            }
                         }
                     }
                     TapHandler {

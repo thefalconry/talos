@@ -240,6 +240,13 @@ C.ApplicationWindow {
         property: "lightSystemBars"
         value: !Theme.dark && !viewer.visible
     }
+    // And the bars themselves wear the page's colour, as does whatever of
+    // the window the interface does not reach.
+    Binding {
+        target: App
+        property: "systemBarColor"
+        value: Theme.bg
+    }
     readonly property bool connected: App.session.conn === Session.Connected
     property bool settingsOpen: false
     property string settingsSection: "connection"
@@ -654,11 +661,17 @@ C.ApplicationWindow {
             TButton {
                 text: qsTr("Allow")
                 kind: "primary"
-                onClicked: App.resolveApproval(approvalSheet.request.id, true)
+                onClicked: {
+                    App.haptic(2)
+                    App.resolveApproval(approvalSheet.request.id, true)
+                }
             },
             TButton {
                 text: qsTr("Deny")
-                onClicked: App.resolveApproval(approvalSheet.request.id, false)
+                onClicked: {
+                    App.haptic(3)
+                    App.resolveApproval(approvalSheet.request.id, false)
+                }
             }
         ]
     }

@@ -58,16 +58,30 @@ Pane {
             TSwitch {
                 checked: pane.mesh.deviceControl
                 onToggled: {
-                    if (!checked) {
+                    const on = checked
+                    // Shows what is so, not what was tapped: on only once
+                    // the question below has been answered yes.
+                    checked = Qt.binding(() => pane.mesh.deviceControl)
+                    if (!on) {
                         pane.mesh.deviceControl = false
                         return
                     }
-                    checked = false
                     pane.win.confirm(
                         qsTr("Give Talon control of this device?"),
                         qsTr("Talon, and anyone able to instruct it, can then run any command and touch any file your account can. Only do this for a Talon you run yourself."),
                         qsTr("Allow"), () => pane.mesh.deviceControl = true)
                 }
+            }
+        }
+        SettingRow {
+            visible: App.prefs.meshSharing && pane.mesh.deviceControl
+                     && App.platform === "android" && !App.allFilesAccess
+            title: qsTr("Reach this phone's files")
+            subtitle: qsTr("Android keeps an app to its own folder. To let file commands work in Downloads, Documents and the rest of shared storage, allow Talos access to all files.")
+            TButton {
+                compact: true
+                text: qsTr("Allow")
+                onClicked: App.askAllFilesAccess()
             }
         }
         SettingRow {

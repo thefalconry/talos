@@ -44,6 +44,21 @@ Pane {
     }
 
     Card {
+        visible: App.mobile
+        title: qsTr("Touch")
+
+        SettingRow {
+            first: true
+            title: qsTr("Vibrate on touch")
+            subtitle: qsTr("A small tick when a message is sent, a switch is turned or a menu is held open.")
+            TSwitch {
+                checked: App.prefs.haptics
+                onToggled: App.prefs.haptics = checked
+            }
+        }
+    }
+
+    Card {
         title: qsTr("Notifications")
 
         SettingRow {

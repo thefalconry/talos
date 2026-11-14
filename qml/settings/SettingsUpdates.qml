@@ -24,20 +24,31 @@ Pane {
             subtitle: pane.up.state === "error" ? pane.up.error
                     : pane.up.state === "unconfigured" ? qsTr("You are on %1. Name the repository that publishes this app's releases below.").arg(pane.up.currentVersion)
                     : pane.up.state === "ready"
-                      ? (pane.up.verified ? qsTr("Checked against the release's published SHA-256.")
+                      ? (pane.up.error !== "" ? pane.up.error
+                         : pane.up.verified ? qsTr("Checked against the release's published SHA-256.")
                                           : qsTr("This release publishes no checksum, so the download could not be verified."))
                     : pane.up.state === "available"
                       ? (pane.up.assetName !== "" ? qsTr("%1 · %2. Nothing downloads until you ask.").arg(pane.up.assetName).arg(pane.up.assetSize)
                                                   : qsTr("No build for this platform is attached; open the release page."))
-                    : pane.up.state === "current" ? qsTr("You have the latest version. Last checked %1.").arg(pane.up.lastChecked)
+                    : pane.up.state === "current"
+                      ? (App.prefs.updateSkipped !== "" && App.prefs.updateSkipped === pane.up.latestVersion
+                         ? qsTr("You passed over %1. Check now offers it again.").arg(pane.up.latestVersion)
+                         : qsTr("You have the latest version. Last checked %1.").arg(pane.up.lastChecked))
                     : qsTr("You are on %1.").arg(pane.up.currentVersion)
 
             TButton {
                 visible: pane.up.state === "available"
                 compact: true
                 kind: "primary"
-                text: pane.up.assetName !== "" && App.platform !== "android" ? qsTr("Download") : qsTr("Open release")
+                text: pane.up.assetName !== "" ? qsTr("Download") : qsTr("Open release")
                 onClicked: pane.up.download()
+            }
+            TButton {
+                visible: pane.up.state === "available"
+                compact: true
+                kind: "ghost"
+                text: qsTr("Skip")
+                onClicked: pane.up.skip()
             }
             TButton {
                 visible: pane.up.state === "downloading"

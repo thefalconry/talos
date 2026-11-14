@@ -216,8 +216,10 @@ Rectangle {
                     acceptedButtons: Qt.LeftButton
                     onTapped: root.win.openChat(row.chatId)
                     onLongPressed: {
-                        if (point.device.type === PointerDevice.TouchScreen)
+                        if (point.device.type === PointerDevice.TouchScreen) {
+                            App.haptic(1)
                             menu.popup()
+                        }
                     }
                 }
                 // A finger has no buttons, so a handler for the right one

@@ -12,30 +12,48 @@ QtObject {
     readonly property bool dark: App.prefs.theme === "dark"
                                  || (App.prefs.theme !== "light" && App.systemDark)
     readonly property real scale: Math.max(0.85, Math.min(1.4, App.prefs.textScale))
-    readonly property color accent: (App.prefs.accent === "system" || !App.prefs.accent)
-                                    ? ((App.systemAccent && App.systemAccent.length > 0) ? App.systemAccent : "#C2622D")
-                                    : App.prefs.accent
+    readonly property bool followsSystem: App.prefs.accent === "system" || !App.prefs.accent
+    /// Android's wallpaper colours (Material You), while the system's accent
+    /// is the one chosen: tones of the accent (a200..a900) and of the
+    /// neutral that goes with it (n10..n900). Null anywhere else, and the
+    /// app wears its own paper and ink.
+    readonly property var wall: followsSystem && App.wallpaper.a600 !== undefined
+                                ? App.wallpaper : null
+    readonly property color accent: !followsSystem ? App.prefs.accent
+                                    : wall ? (dark ? wall.a200 : wall.a600)
+                                    : (App.systemAccent && App.systemAccent.length > 0)
+                                      ? App.systemAccent : "#C2622D"
 
     // Surfaces, from the window back to raised cards.
-    readonly property color bg: dark ? "#262624" : "#FAF9F5"
-    readonly property color sidebar: dark ? "#1F1E1D" : "#F2F0E9"
-    readonly property color surface: dark ? "#30302E" : "#FFFFFF"
-    readonly property color raised: dark ? "#3A3936" : "#FFFFFF"
-    readonly property color sunken: dark ? "#1C1B1A" : "#F1EFE8"
+    readonly property color bg: wall ? (dark ? wall.n900 : wall.n10)
+                                     : dark ? "#262624" : "#FAF9F5"
+    readonly property color sidebar: wall ? (dark ? Qt.darker(wall.n900, 1.18) : wall.n50)
+                                          : dark ? "#1F1E1D" : "#F2F0E9"
+    readonly property color surface: wall ? (dark ? wall.n800 : "#FFFFFF")
+                                          : dark ? "#30302E" : "#FFFFFF"
+    readonly property color raised: wall ? (dark ? Qt.lighter(wall.n800, 1.18) : "#FFFFFF")
+                                         : dark ? "#3A3936" : "#FFFFFF"
+    readonly property color sunken: wall ? (dark ? Qt.darker(wall.n900, 1.3) : wall.n50)
+                                         : dark ? "#1C1B1A" : "#F1EFE8"
     readonly property color hover: dark ? "#14FFFFFF" : "#0D000000"
     readonly property color pressed: dark ? "#22FFFFFF" : "#17000000"
     // The row that is open or chosen wears the accent, faintly.
     readonly property color selected: Qt.rgba(accent.r, accent.g, accent.b, dark ? 0.20 : 0.13)
-    readonly property color border: dark ? "#42413D" : "#E3DFD3"
-    readonly property color borderStrong: dark ? "#5A5852" : "#CFCABB"
+    readonly property color border: wall ? (dark ? wall.n700 : wall.n100)
+                                         : dark ? "#42413D" : "#E3DFD3"
+    readonly property color borderStrong: wall ? (dark ? wall.n600 : wall.n200)
+                                               : dark ? "#5A5852" : "#CFCABB"
     readonly property color scrim: dark ? "#99000000" : "#59000000"
 
     readonly property color text: dark ? "#F3F1E9" : "#1F1E1B"
     readonly property color textSecondary: dark ? "#B9B6AA" : "#66635A"
     readonly property color textTertiary: dark ? "#8B887E" : "#928E82"
-    readonly property color accentInk: "#FFFFFF"
+    // What is written on the accent. The wallpaper's accent is a pale
+    // tone on a dark page, and takes dark ink.
+    readonly property color accentInk: wall && dark ? wall.a900 : "#FFFFFF"
     // Your own messages: the neutral bubble with a breath of the accent.
-    readonly property color userBubble: Qt.tint(dark ? "#3A3936" : "#EFECE2",
+    readonly property color userBubble: Qt.tint(wall ? (dark ? Qt.lighter(wall.n800, 1.18) : wall.n100)
+                                                     : dark ? "#3A3936" : "#EFECE2",
                                                 Qt.rgba(accent.r, accent.g, accent.b, dark ? 0.12 : 0.08))
     // A toast is the theme turned inside out, so it stands off the page.
     readonly property color toast: dark ? "#F3F1E9" : "#2B2A27"
