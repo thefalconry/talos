@@ -62,6 +62,7 @@ qt_add_library(talos_core STATIC
     src/mesh/MeshService.h src/mesh/MeshService.cpp
     src/mesh/Platform.h src/mesh/Platform.cpp
     src/mesh/SelfUpdate.h src/mesh/SelfUpdate.cpp
+    src/mesh/ReleaseInstall.h src/mesh/ReleaseInstall.cpp
     src/mesh/ServiceInstall.h src/mesh/ServiceInstall.cpp
     src/mesh/Headless.h src/mesh/Headless.cpp
     src/mesh/ScreenControl.h src/mesh/ScreenControl.cpp

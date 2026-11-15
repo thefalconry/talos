@@ -73,6 +73,37 @@ void askForNotifications();
 /// service knows when a notification would only repeat what is on screen.
 void markUiActive(const QString &dataDir, bool active);
 bool uiActive(const QString &dataDir);
+/// Shizuku: a service a person can install and start on an Android phone,
+/// which then runs commands as the shell user (or root) for the apps they
+/// allow. @c state is "absent", "stopped", "ask", "denied" or "ready".
+struct Elevation {
+    QString state;
+    int uid = -1; ///< who commands run as when ready: 2000 the shell, 0 root
+    bool ready() const { return state == QLatin1StringView("ready"); }
+};
+/// With @p wait a binder still on its way is given a moment: off the GUI
+/// thread only.
+Elevation elevation(bool wait = false);
+/// Raise Shizuku's question, or open Shizuku when there is nothing to ask.
+void askElevation();
+struct ElevatedRun {
+    bool ran = false; ///< false when Shizuku could not be used at all
+    QString error;
+    QString out;
+    QString err;
+    int code = -1;
+    bool timedOut = false;
+    int uid = -1;
+};
+/// Run @p cmd through Shizuku, reading the file @p input if one is named.
+/// Blocks: off the GUI thread only.
+ElevatedRun runElevated(const QString &cmd, const QString &cwd, int timeoutMs,
+                        const QString &input = {});
+/// Why the package at @p path cannot update this app (another app, another
+/// signing key), or empty when it can (Android).
+QString updateProblem(const QString &path);
+/// The activity that opens this app, as `am start -n` names it (Android).
+QString launchComponent();
 /// Hand an APK to the system installer, which asks the person holding the
 /// device (Android). Empty when it was handed over, otherwise the reason.
 QString installPackage(const QString &path);

@@ -3,6 +3,7 @@
 #include "app/LinuxTheme.h"
 
 #include "mesh/Platform.h"
+#include "mesh/ReleaseInstall.h"
 #include "mesh/SelfUpdate.h"
 #include "mesh/ServiceInstall.h"
 
@@ -21,6 +22,7 @@
 #include <QMimeData>
 #include <QPalette>
 #include <QProcess>
+#include <QtConcurrentRun>
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QQmlEngine>
@@ -66,8 +68,17 @@ App::App(QObject *parent)
     }
     connect(&m_mesh, &MeshService::restartRequested, this, [this] {
         // A pushed update replaced the program on disk: start it and leave.
-        m_session.persist();
-        QProcess::startDetached(selfupdate::ownExecutable(), {});
+        selfupdate::startAfterExit(selfupdate::ownExecutable());
+        quit();
+    });
+    connect(&m_updater, &Updater::restartInto, this,
+            [this](const QString &program, const QStringList &arguments, const QString &discard,
+                   bool afterExit) {
+        service::restart();
+        if (afterExit)
+            selfupdate::startAfterExit(program, arguments, discard);
+        else
+            QProcess::startDetached(program, arguments);
         quit();
     });
 
@@ -266,6 +277,8 @@ App::App(QObject *parent)
         if (mobile()) {
             platform::markUiActive(m_store.dataDir(), active);
             active ? m_uiBeat.start() : m_uiBeat.stop();
+            if (active)
+                refreshElevation();
         }
 #if defined(Q_OS_MACOS)
         // A click on the Dock icon arrives as the app becoming active. With
@@ -1034,6 +1047,34 @@ bool App::allFilesAccess() const
 void App::askAllFilesAccess()
 {
     platform::askForAllFiles();
+}
+
+void App::refreshElevation()
+{
+    if (!platform::isMobile())
+        return;
+    QtConcurrent::run([] { return platform::elevation(true); })
+        .then(this, [this](const platform::Elevation &e) {
+        const QString state = e.ready() && e.uid == 0 ? u"root"_s : e.state;
+        if (state != m_elevation) {
+            m_elevation = state;
+            emit elevationChanged();
+        }
+        // After asking, the answer arrives whenever the person gives it.
+        if (m_elevationPolls > 0 && --m_elevationPolls > 0 && !e.ready())
+            QTimer::singleShot(1500, this, &App::refreshElevation);
+        else
+            m_elevationPolls = 0;
+    });
+}
+
+void App::askElevation()
+{
+    platform::askElevation();
+    const bool polling = m_elevationPolls > 0;
+    m_elevationPolls = 40;
+    if (!polling)
+        QTimer::singleShot(1500, this, &App::refreshElevation);
 }
 
 void App::haptic(int kind)

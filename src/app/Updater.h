@@ -18,8 +18,9 @@ class Store;
 /// release's published SHA-256 (a `SHA256SUMS` asset, or `<asset>.sha256`)
 /// before it is offered for installing; a release that publishes no
 /// checksum is reported as unverified rather than passed off as checked.
-/// Installing is handed to the system: this class never overwrites the
-/// running program.
+/// A checked download replaces the installed copy where this install can
+/// do that, and the app restarts into it; anything else is handed to the
+/// system.
 class Updater : public QObject
 {
     Q_OBJECT
@@ -35,11 +36,12 @@ class Updater : public QObject
     Q_PROPERTY(double progress READ progress NOTIFY progressChanged)
     Q_PROPERTY(bool available READ available NOTIFY changed)
     Q_PROPERTY(QString lastChecked READ lastChecked NOTIFY changed)
+    Q_PROPERTY(QString installs READ installs NOTIFY changed)
 public:
     explicit Updater(Store *store, QObject *parent = nullptr);
 
     /// unconfigured | idle | checking | current | available | downloading |
-    /// ready | error
+    /// ready | installing | error
     QString state() const { return m_state; }
     QString currentVersion() const { return QStringLiteral(TALOS_VERSION); }
     QString latestVersion() const { return m_latest; }
@@ -53,6 +55,10 @@ public:
     bool available() const { return m_state == QLatin1StringView("available")
                                     || m_state == QLatin1StringView("ready"); }
     QString lastChecked() const;
+    /// What Install does with the asset on offer: "restart" puts it in place
+    /// and starts the app again, "system" hands it to the system's own
+    /// installer, "folder" only shows where it is.
+    QString installs() const;
 
     /// Look for a newer release. One the user chose to skip is passed over
     /// by the scheduled checks, and offered again when they ask themselves.
@@ -60,8 +66,10 @@ public:
     /// Pass over the release on offer.
     Q_INVOKABLE void skip();
     Q_INVOKABLE void download();
+    /// Download, check and install in one go.
+    Q_INVOKABLE void update();
     Q_INVOKABLE void cancel();
-    /// Hand the downloaded file to the system (or show it in its folder).
+    /// Put the downloaded file in place, or hand it to the system.
     Q_INVOKABLE void install();
     Q_INVOKABLE void openReleasePage();
 
@@ -74,6 +82,9 @@ public:
 signals:
     void changed();
     void progressChanged();
+    /// The new build is in place: start @p program and leave.
+    void restartInto(const QString &program, const QStringList &arguments,
+                     const QString &discard, bool afterExit);
 
 private:
     void set(const QString &state, const QString &error = {});
@@ -97,6 +108,8 @@ private:
     QString m_checksumUrl;
     QString m_file;
     bool m_verified = false;
+    bool m_thenInstall = false;
+    bool m_handOver = false;
     double m_progress = 0;
     qint64 m_lastCheckedMs = 0;
 };

@@ -7,16 +7,19 @@ Pane {
     id: pane
 
     readonly property var up: App.updater
+    readonly property string latest: up.latestVersion.replace(/^v/, "")
 
     Card {
         title: qsTr("This app")
 
         SettingRow {
             first: true
-            iconName: pane.up.available ? "download" : "check"
-            title: pane.up.state === "available" ? qsTr("Version %1 is available").arg(pane.up.latestVersion)
-                 : pane.up.state === "ready" ? qsTr("Version %1 is downloaded").arg(pane.up.latestVersion)
+            iconName: pane.up.available || pane.up.state === "downloading"
+                      || pane.up.state === "installing" ? "download" : "check"
+            title: pane.up.state === "available" ? qsTr("Version %1 is available").arg(pane.latest)
+                 : pane.up.state === "ready" ? qsTr("Version %1 is downloaded").arg(pane.latest)
                  : pane.up.state === "downloading" ? qsTr("Downloading %1…").arg(pane.up.assetName)
+                 : pane.up.state === "installing" ? qsTr("Installing version %1…").arg(pane.latest)
                  : pane.up.state === "checking" ? qsTr("Checking…")
                  : pane.up.state === "unconfigured" ? qsTr("No update source is set")
                  : pane.up.state === "error" ? qsTr("The update check failed")
@@ -27,12 +30,15 @@ Pane {
                       ? (pane.up.error !== "" ? pane.up.error
                          : pane.up.verified ? qsTr("Checked against the release's published SHA-256.")
                                           : qsTr("This release publishes no checksum, so the download could not be verified."))
+                    : pane.up.state === "installing"
+                      ? (App.platform === "linux" ? qsTr("Talos restarts when it is done. The system may ask for your password first.")
+                                                  : qsTr("Talos restarts when it is done."))
                     : pane.up.state === "available"
                       ? (pane.up.assetName !== "" ? qsTr("%1 · %2. Nothing downloads until you ask.").arg(pane.up.assetName).arg(pane.up.assetSize)
                                                   : qsTr("No build for this platform is attached; open the release page."))
                     : pane.up.state === "current"
                       ? (App.prefs.updateSkipped !== "" && App.prefs.updateSkipped === pane.up.latestVersion
-                         ? qsTr("You passed over %1. Check now offers it again.").arg(pane.up.latestVersion)
+                         ? qsTr("You passed over %1. Check now offers it again.").arg(pane.latest)
                          : qsTr("You have the latest version. Last checked %1.").arg(pane.up.lastChecked))
                     : qsTr("You are on %1.").arg(pane.up.currentVersion)
 
@@ -40,8 +46,9 @@ Pane {
                 visible: pane.up.state === "available"
                 compact: true
                 kind: "primary"
-                text: pane.up.assetName !== "" ? qsTr("Download") : qsTr("Open release")
-                onClicked: pane.up.download()
+                text: pane.up.assetName === "" ? qsTr("Open release")
+                    : pane.up.installs === "folder" ? qsTr("Download") : qsTr("Update")
+                onClicked: pane.up.update()
             }
             TButton {
                 visible: pane.up.state === "available"
@@ -60,7 +67,8 @@ Pane {
                 visible: pane.up.state === "ready"
                 compact: true
                 kind: "primary"
-                text: App.platform === "linux" ? qsTr("Show in folder") : qsTr("Install")
+                text: pane.up.installs === "folder" ? qsTr("Show in folder")
+                    : pane.up.installs === "restart" ? qsTr("Install and restart") : qsTr("Install")
                 onClicked: pane.up.install()
             }
             TButton {

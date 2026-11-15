@@ -30,6 +30,8 @@ bool lingering();
 
 bool install(QString *error);
 bool uninstall(QString *error);
+/// Start the service again, so that it runs the build now on disk.
+void restart();
 
 } // namespace talos::service
 

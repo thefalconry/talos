@@ -125,6 +125,10 @@ daemon's protocol definition rather than ported from the Flutter companion.
 - **Android**: share text or files to Talos from other apps; an optional
   background service keeps the connection up with the app closed, starts
   at boot and announces replies
+- **Shizuku** (Android): on a phone whose owner runs
+  [Shizuku](https://shizuku.rikka.app/) and allows Talos there, `exec` runs
+  as the shell user, the way `adb shell` does, and `install_apk` installs
+  without a tap. Without it, commands run as the app
 - **Background service** (Linux, macOS): `talos --headless` keeps the device
   on the mesh with the app closed; Settings or `talos service install` sets
   it up as a systemd user unit, or on a Mac as a LaunchAgent that runs
@@ -157,8 +161,12 @@ daemon's protocol definition rather than ported from the Flutter companion.
   (fprintd), Touch ID on macOS, and fingerprint or face on Android (a
   keystore key released by the system's biometric prompt)
 - Read replies aloud; hands-free voice mode on Android
-- Update check against a GitHub repository's releases, with checksum
-  verification
+- Updates from a GitHub repository's releases: one press downloads the
+  build, checks it against the release's SHA-256, puts it in place and
+  restarts the app. A Mac's app bundle and an AppImage are swapped where
+  they are, Windows runs its installer without the questions, an rpm or deb
+  goes through the package manager once you authorise it, and Android hands
+  over to the system installer (or installs silently through Shizuku)
 
 ## Build
 
@@ -349,9 +357,15 @@ tests/       unit and integration tests, protocol fixtures
   a device yet. While it is on, tokens are not sealed by the app lock,
   because the service has to read them unattended.
 - **`install_apk`** (Android) hands the package to the system installer,
-  which asks the person holding the phone to confirm. It is never silent:
-  that needs root or Shizuku, which Talos does not use, and `exec` likewise
-  runs as the app's own user.
+  which asks the person holding the phone to confirm. It is silent only
+  through Shizuku; Talos does not use root. Shizuku has to be started again
+  after each reboot unless the phone is rooted, and until it is, commands
+  run as the app's own user.
+- **Updating in place** needs an install the app may replace: a Mac app run
+  from the disk image or from quarantine, a portable Windows copy and a
+  download that could not be checked against a checksum are handed to the
+  system instead. On a Mac a signed copy only takes an update signed with
+  the same certificate.
 - **`computer`** covers screenshot, move, click, drag, scroll, type and key
   on Linux desktops that have the RemoteDesktop portal, and on macOS.
   `snapshot` (the accessibility tree) is macOS only, as it is in talon-node.

@@ -59,6 +59,19 @@ public:
 
     MeshService(Store *store, Session *session, QObject *parent = nullptr);
 
+    /// The two shell scripts a silent install is made of: the first takes a
+    /// private, checked copy of the APK, the second installs that copy.
+    static QString stageApkScript(const QString &source, const QString &expected);
+    static QString installApkWorker(const QString &dir, const QString &expected, int sleepSecs,
+                                    bool allowDowngrade, const QString &thenStart = {});
+    /// Both, through Shizuku: the APK at @p path is installed without a
+    /// prompt @p delayMs from now, and the activity @p thenStart opened
+    /// after it. With @p ownFile the path is one only this app can read.
+    /// Blocks until the install is under way.
+    static CommandOutcome installThroughShizuku(const QString &path, const QString &expected,
+                                                int delayMs, bool allowDowngrade,
+                                                const QString &thenStart = {},
+                                                bool ownFile = false);
     static QStringList coreCapabilities();
     static QStringList capabilitiesFor(bool deviceControl);
     /// Which of the three kinds a device-control command is: "exec",
@@ -135,6 +148,10 @@ private:
     bool acquire();
     void updateSelf(const QJsonObject &params, DeviceExec::Done done);
     void installApk(const QJsonObject &params, DeviceExec::Done done);
+    void installSilently(const QString &path, const QString &expected, const QJsonObject &params,
+                         DeviceExec::Done done);
+    /// "user", or "shell" or "root" when commands go through Shizuku.
+    QString execPrivilege() const;
     void uploadFile(const QJsonObject &params, DeviceExec::Done done);
     void downloadFile(const QJsonObject &params, DeviceExec::Done done);
     QJsonObject statusPayload() const;

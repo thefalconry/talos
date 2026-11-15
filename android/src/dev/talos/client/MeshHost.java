@@ -132,6 +132,7 @@ public class MeshHost extends QtService {
             stopSelf();
             return START_NOT_STICKY;
         }
+        Elevated.prepare(this);
         super.onStartCommand(intent, flags, startId);
         // Brought back if the system has to reclaim the process.
         return START_STICKY;

@@ -92,6 +92,7 @@ MeshService::MeshService(Store *store, Session *session, QObject *parent)
         }
     });
     m_ownerRetry.start();
+    m_exec.allowElevation = [this] { return m_store->prefBool(u"meshElevated"_s); };
     m_exec.writeLimit = [this] {
         const qint64 gib = qBound(1, m_store->prefInt(u"meshMaxWriteGiB"_s), 1024);
         return gib * 1024 * 1024 * 1024;
@@ -705,6 +706,14 @@ void MeshService::answer(const QString &id, const QString &name, const QJsonObje
     emit changed();
 }
 
+QString MeshService::execPrivilege() const
+{
+    if (!m_store->prefBool(u"meshElevated"_s))
+        return u"user"_s;
+    const platform::Elevation e = platform::elevation();
+    return !e.ready() ? u"user"_s : e.uid == 0 ? u"root"_s : u"shell"_s;
+}
+
 QJsonObject MeshService::statusPayload() const
 {
     QJsonObject o{
@@ -712,7 +721,7 @@ QJsonObject MeshService::statusPayload() const
         {"platform"_L1, platform::name()},
         {"appVersion"_L1, QStringLiteral(TALOS_VERSION)},
         {"client"_L1, u"talos (Qt)"_s},
-        {"execPrivilege"_L1, u"user"_s},
+        {"execPrivilege"_L1, execPrivilege()},
         {"deviceControl"_L1, deviceControl() ? u"on"_s : u"off"_s},
         {"meshSharing"_L1, sharing() ? u"on"_s : u"off"_s},
         {"periodicReporting"_L1, m_store->prefBool(u"meshPeriodic"_s)
@@ -740,13 +749,19 @@ void MeshService::installApk(const QJsonObject &params, DeviceExec::Done done)
         return;
     }
     const QString expected = params["sha256"_L1].toString().trimmed().toLower();
+    static const QRegularExpression digest(u"^[0-9a-f]{64}$"_s);
+    if (!expected.isEmpty() && !digest.match(expected).hasMatch()) {
+        done(CommandOutcome::fail(u"APK integrity check failed: that is not a SHA-256 "
+                                  "digest. Nothing was installed."_s));
+        return;
+    }
+    // With Shizuku the shell installs it, and does its own checking of
+    // the copy it installs.
+    if (execPrivilege() != "user"_L1) {
+        installSilently(path, expected, params, done);
+        return;
+    }
     if (!expected.isEmpty()) {
-        static const QRegularExpression digest(u"^[0-9a-f]{64}$"_s);
-        if (!digest.match(expected).hasMatch()) {
-            done(CommandOutcome::fail(u"APK integrity check failed: that is not a SHA-256 "
-                                      "digest. Nothing was installed."_s));
-            return;
-        }
         QFile apk(path);
         QCryptographicHash hash(QCryptographicHash::Sha256);
         if (!apk.open(QIODevice::ReadOnly) || !hash.addData(&apk)) {
@@ -767,12 +782,112 @@ void MeshService::installApk(const QJsonObject &params, DeviceExec::Done done)
     }
     CommandOutcome o;
     o.ok = true;
-    // Android installs nothing without a tap unless the app has root or
-    // Shizuku, which this one does not use.
+    // Without Shizuku, Android installs nothing unless someone taps.
     o.message = u"Handed to the system installer. The person holding the device has to confirm "
                 "it on screen; check appVersion with get_device_status afterwards."_s;
     o.data = {{"confirmation"_L1, u"required"_s}};
     done(o);
+}
+
+namespace {
+
+QString shQuote(const QString &s)
+{
+    return u'\'' + QString(s).replace(u'\'', u"'\\''"_s) + u'\'';
+}
+
+const QString kStageRoot = u"/data/local/tmp"_s;
+
+} // namespace
+
+QString MeshService::stageApkScript(const QString &source, const QString &expected)
+{
+    // Exits 3 when there is no such file, 4 or 5 when it could not be
+    // copied, 6 (with the digest it has on stderr) when it is not the file
+    // that was announced; otherwise prints the private folder it is now in.
+    // With no source named, the file arrives on the script's input: the
+    // shell cannot read what is in this app's own storage.
+    const QString src = shQuote(source), want = shQuote(expected);
+    const QString copy = source.isEmpty() ? u"cat >"_s : u"cp -f %1"_s.arg(src);
+    return QStringList{
+        source.isEmpty() ? u":"_s : u"[ -f %1 ] || exit 3"_s.arg(src),
+        u"d=$(mktemp -d -p %1 talos-update.XXXXXXXXXX) || exit 4"_s.arg(shQuote(kStageRoot)),
+        u"chmod 700 \"$d\" && %1 \"$d/update.apk\" || { rm -rf \"$d\"; exit 5; }"_s.arg(copy),
+        u"if [ -n %1 ]; then got=$(sha256sum \"$d/update.apk\" | cut -d\" \" -f1); "
+        "if [ \"$got\" != %1 ]; then rm -rf \"$d\"; echo \"$got\" >&2; exit 6; fi; fi"_s.arg(want),
+        u"echo \"$d\""_s,
+    }.join(u'\n');
+}
+
+QString MeshService::installApkWorker(const QString &dir, const QString &expected, int sleepSecs,
+                                      bool allowDowngrade, const QString &thenStart)
+{
+    const QString apk = shQuote(dir + u"/update.apk"_s), log = shQuote(dir + u"/install.log"_s);
+    const QString want = shQuote(expected);
+    const QString open = thenStart.isEmpty()
+        ? QString() : u" && am start -n %1 >> %2 2>&1"_s.arg(shQuote(thenStart), log);
+    return u"sleep %1; if [ -z %2 ] || [ \"$(sha256sum %3 | cut -d\" \" -f1)\" = %2 ]; then "
+           "pm install %4 %3 > %5 2>&1%6; echo \"exit=$?\" >> %5; "
+           "else echo \"integrity check failed before install\" > %5; fi; rm -f %3"_s
+        .arg(QString::number(sleepSecs), want, apk, allowDowngrade ? u"-r -d"_s : u"-r"_s, log,
+             open);
+}
+
+CommandOutcome MeshService::installThroughShizuku(const QString &path, const QString &expected,
+                                                  int delayMs, bool allowDowngrade,
+                                                  const QString &thenStart, bool ownFile)
+{
+    // The file sits in storage the package manager cannot read, so the
+    // shell takes a private copy, checks that copy, and installs it a few
+    // seconds later, detached: the answer has left by the time the install
+    // ends this app, and the install finishes without it.
+    const int sleepSecs = (qBound(0, delayMs, 30'000) + 999) / 1000;
+    const platform::ElevatedRun staged = ownFile
+        ? platform::runElevated(stageApkScript({}, expected), {}, 120'000, path)
+        : platform::runElevated(stageApkScript(path, expected), {}, 120'000);
+    if (!staged.ran)
+        return CommandOutcome::fail(u"install_apk: Shizuku could not be used: %1"_s
+                                        .arg(staged.error));
+    if (staged.code == 3)
+        return CommandOutcome::fail(u"No such APK on device: %1"_s.arg(path));
+    if (staged.code == 6)
+        return CommandOutcome::fail(u"APK integrity check failed: expected %1, got %2. "
+                                    "Nothing was installed."_s.arg(expected, staged.err.trimmed()));
+    const QString dir = staged.out.trimmed().section(u'\n', -1).trimmed();
+    if (staged.code != 0 || !dir.startsWith(kStageRoot + u"/talos-update."_s))
+        return CommandOutcome::fail(u"Failed to stage the APK into %1: %2"_s
+                                        .arg(kStageRoot, staged.err.trimmed()));
+    const platform::ElevatedRun started = platform::runElevated(
+        u"setsid sh -c %1 >/dev/null 2>&1 &"_s
+            .arg(shQuote(installApkWorker(dir, expected, sleepSecs, allowDowngrade, thenStart))),
+        {}, 5000);
+    if (!started.ran || started.code != 0)
+        return CommandOutcome::fail(u"Failed to start the install: %1"_s
+                                        .arg(started.ran ? started.err.trimmed() : started.error));
+    CommandOutcome o;
+    o.ok = true;
+    o.message = u"Update staged: installing in %1s without a prompt. If it is this app, it "
+                "restarts and the mesh reconnects by itself; check appVersion with "
+                "get_device_status afterwards."_s.arg(sleepSecs);
+    o.data = {{"staged"_L1, true}, {"stagedPath"_L1, dir + u"/update.apk"_s},
+              {"delayMs"_L1, sleepSecs * 1000}, {"allowDowngrade"_L1, allowDowngrade},
+              {"log"_L1, dir + u"/install.log"_s}, {"via"_L1, u"shizuku"_s}};
+    return o;
+}
+
+void MeshService::installSilently(const QString &path, const QString &expected,
+                                  const QJsonObject &params, DeviceExec::Done done)
+{
+    const bool downgrade = params["allow_downgrade"_L1].toBool();
+    const int delayMs = params["delayMs"_L1].toInt(3000);
+    auto *watcher = new QFutureWatcher<CommandOutcome>(this);
+    connect(watcher, &QFutureWatcherBase::finished, this, [watcher, done] {
+        watcher->deleteLater();
+        done(watcher->result());
+    });
+    watcher->setFuture(QtConcurrent::run([path, expected, delayMs, downgrade] {
+        return installThroughShizuku(path, expected, delayMs, downgrade);
+    }));
 }
 
 // ── Updating this program ───────────────────────────────────────────────────

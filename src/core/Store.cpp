@@ -77,6 +77,7 @@ QVariantMap defaultPrefs()
         {u"meshMaxWriteGiB"_s, 4},
         // What device control covers. Folders empty means anywhere.
         {u"meshAllowExec"_s, true},
+        {u"meshElevated"_s, true},           // through Shizuku, where its owner allowed it
         {u"meshAllowRead"_s, true},
         {u"meshAllowWrite"_s, true},
         {u"meshFolders"_s, QStringList()},

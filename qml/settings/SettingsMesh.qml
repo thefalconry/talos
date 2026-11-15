@@ -96,6 +96,27 @@ Pane {
             }
         }
         SettingRow {
+            visible: App.prefs.meshSharing && pane.mesh.deviceControl && App.prefs.meshAllowExec
+                     && App.platform === "android" && App.elevation !== "absent"
+            title: qsTr("Run commands through Shizuku")
+            subtitle: !App.prefs.meshElevated ? qsTr("Off: commands run as this app, which reaches little of the phone.")
+                    : App.elevation === "ready" ? qsTr("Commands run as the shell user, the way adb does, and Talon can install an update without a tap.")
+                    : App.elevation === "root" ? qsTr("Shizuku runs as root here, and so do Talon's commands. An update installs without a tap.")
+                    : App.elevation === "stopped" ? qsTr("Shizuku is installed but not running. Start it, and commands run as the shell user.")
+                    : App.elevation === "denied" ? qsTr("Shizuku was told not to allow Talos. Allow it in Shizuku's own list of apps.")
+                    : qsTr("Shizuku is running. Allow Talos there, and commands run as the shell user instead of as this app.")
+            TButton {
+                visible: App.prefs.meshElevated && ["ask", "denied", "stopped"].indexOf(App.elevation) >= 0
+                compact: true
+                text: App.elevation === "ask" ? qsTr("Allow") : qsTr("Open Shizuku")
+                onClicked: App.askElevation()
+            }
+            TSwitch {
+                checked: App.prefs.meshElevated
+                onToggled: App.prefs.meshElevated = checked
+            }
+        }
+        SettingRow {
             visible: App.prefs.meshSharing && pane.mesh.deviceControl
             title: qsTr("Read files")
             subtitle: qsTr("List folders, read files and send them to Talon.")

@@ -6,6 +6,8 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLocale>
 #include <QNetworkInformation>
 #include <QSysInfo>
@@ -450,6 +452,95 @@ bool uiActive(const QString &dataDir)
     // is a window that went away without saying so.
     const QFileInfo marker(uiMarker(dataDir));
     return marker.exists() && marker.lastModified().secsTo(QDateTime::currentDateTime()) < 30;
+}
+
+Elevation elevation(bool wait)
+{
+    Elevation e;
+    e.state = u"absent"_s;
+#if defined(Q_OS_ANDROID)
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject status = QJniObject::callStaticObjectMethod(
+        "dev/talos/client/Elevated", "status",
+        "(Landroid/content/Context;Z)Ljava/lang/String;", context.object(), jboolean(wait));
+    if (status.isValid()) {
+        const QStringList parts = status.toString().split(u' ');
+        e.state = parts.value(0);
+        e.uid = parts.size() > 1 ? parts.at(1).toInt() : -1;
+    }
+#else
+    Q_UNUSED(wait)
+#endif
+    return e;
+}
+
+void askElevation()
+{
+#if defined(Q_OS_ANDROID)
+    QNativeInterface::QAndroidApplication::runOnAndroidMainThread([] {
+        const QJniObject context = QNativeInterface::QAndroidApplication::context();
+        QJniObject::callStaticMethod<void>("dev/talos/client/Elevated", "ask",
+                                           "(Landroid/content/Context;)V", context.object());
+    });
+#endif
+}
+
+ElevatedRun runElevated(const QString &cmd, const QString &cwd, int timeoutMs,
+                        const QString &input)
+{
+    ElevatedRun r;
+#if defined(Q_OS_ANDROID)
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject answer = QJniObject::callStaticObjectMethod(
+        "dev/talos/client/Elevated", "run",
+        "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;)"
+        "Ljava/lang/String;",
+        context.object(), QJniObject::fromString(cmd).object<jstring>(),
+        QJniObject::fromString(cwd).object<jstring>(), jint(timeoutMs),
+        QJniObject::fromString(input).object<jstring>());
+    const QJsonObject o = answer.isValid()
+        ? QJsonDocument::fromJson(answer.toString().toUtf8()).object() : QJsonObject();
+    r.ran = o["ran"_L1].toBool();
+    r.error = o["error"_L1].toString();
+    r.out = o["stdout"_L1].toString();
+    r.err = o["stderr"_L1].toString();
+    r.code = o["exitCode"_L1].toInt(-1);
+    r.timedOut = o["timedOut"_L1].toBool();
+    r.uid = o["uid"_L1].toInt(-1);
+#else
+    Q_UNUSED(cmd)
+    Q_UNUSED(cwd)
+    Q_UNUSED(timeoutMs)
+    Q_UNUSED(input)
+    r.error = u"Shizuku is an Android service."_s;
+#endif
+    return r;
+}
+
+QString updateProblem(const QString &path)
+{
+#if defined(Q_OS_ANDROID)
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject problem = QJniObject::callStaticObjectMethod(
+        "dev/talos/client/ApkInstaller", "updateProblem",
+        "(Landroid/content/Context;Ljava/lang/String;)Ljava/lang/String;", context.object(),
+        QJniObject::fromString(path).object<jstring>());
+    return problem.isValid() ? problem.toString() : QString();
+#else
+    Q_UNUSED(path)
+    return {};
+#endif
+}
+
+QString launchComponent()
+{
+#if defined(Q_OS_ANDROID)
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject name = context.callObjectMethod("getPackageName", "()Ljava/lang/String;");
+    return name.isValid() ? name.toString() + u"/dev.talos.client.TalosActivity"_s : QString();
+#else
+    return {};
+#endif
 }
 
 QString installPackage(const QString &path)

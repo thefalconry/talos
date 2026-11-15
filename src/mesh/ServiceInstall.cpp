@@ -241,6 +241,17 @@ bool uninstall(QString *error)
     return true;
 }
 
+void restart()
+{
+    if (!supported() || !installed())
+        return;
+#if defined(Q_OS_MACOS)
+    run(u"/bin/launchctl"_s, {u"kickstart"_s, u"-k"_s, agentTarget()});
+#else
+    run(u"systemctl"_s, {u"--user"_s, u"try-restart"_s, kUnit});
+#endif
+}
+
 bool enable(Store *store, QString *error)
 {
     // The service has no desktop session and so no unlocked keyring:

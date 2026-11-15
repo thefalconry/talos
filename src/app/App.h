@@ -54,6 +54,7 @@ class App : public QObject
     Q_PROPERTY(QVariantMap wallpaper READ wallpaper NOTIFY systemAccentChanged)
     /// Whether mesh file commands can reach a phone's shared storage.
     Q_PROPERTY(bool allFilesAccess READ allFilesAccess NOTIFY activeChanged)
+    Q_PROPERTY(QString elevation READ elevation NOTIFY elevationChanged)
     Q_PROPERTY(bool serviceSupported READ serviceSupported CONSTANT)
     Q_PROPERTY(QString serviceState READ serviceState NOTIFY serviceChanged)
     Q_PROPERTY(bool serviceLingering READ serviceLingering NOTIFY serviceChanged)
@@ -98,6 +99,11 @@ public:
     QVariantMap wallpaper() const { return m_wallpaper; }
     bool allFilesAccess() const;
     Q_INVOKABLE void askAllFilesAccess();
+    /// Shizuku on this phone: "absent", "stopped", "ask", "denied", "ready"
+    /// (commands run as the shell user) or "root".
+    QString elevation() const { return m_elevation; }
+    Q_INVOKABLE void refreshElevation();
+    Q_INVOKABLE void askElevation();
     /// A tick under the finger, where there is one and the user wants it:
     /// 0 a tap, 1 a long press, 2 done, 3 refused.
     Q_INVOKABLE void haptic(int kind = 0);
@@ -186,6 +192,7 @@ signals:
     void systemDarkChanged();
     void systemAccentChanged();
     void activeChanged();
+    void elevationChanged();
     void approvalsChanged();
     void serviceChanged();
     /// A pairing link arrived from outside the app.
@@ -227,6 +234,8 @@ private:
     bool m_askedForLocalNetwork = false;
     QColor m_barColor;
     QVariantMap m_wallpaper;
+    QString m_elevation = QStringLiteral("absent");
+    int m_elevationPolls = 0;
     void readWallpaper();
     /// The chat of a tapped notification, held while the app is locked.
     QString m_tappedChat;

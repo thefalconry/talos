@@ -11,6 +11,7 @@
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QProcess>
+#include <QtConcurrentRun>
 #include <QTimer>
 #include <memory>
 
@@ -131,13 +132,37 @@ bool DeviceExec::handle(const QString &name, const QJsonObject &params, Done don
     return true;
 }
 
-void DeviceExec::exec(const QString &cmd, const QString &cwd, int timeoutMs, Done done)
+void DeviceExec::exec(const QString &cmd, const QString &cwd, int timeoutMs, Done done,
+                      bool elevate)
 {
     if (cmd.trimmed().isEmpty()) {
         done(CommandOutcome::fail(u"No command."_s));
         return;
     }
     const int budget = qBound(1000, timeoutMs, 300'000);
+#if defined(Q_OS_ANDROID)
+    if (elevate && allowElevation()) {
+        QtConcurrent::run([cmd, cwd, budget] { return platform::runElevated(cmd, cwd, budget); })
+            .then(this, [this, cmd, cwd, budget, done](const platform::ElevatedRun &r) {
+            if (!r.ran) {
+                exec(cmd, cwd, budget, done, false);
+                return;
+            }
+            CommandOutcome o;
+            o.ok = !r.timedOut && r.code == 0;
+            if (r.timedOut)
+                o.message = u"Command timed out."_s;
+            const QString err = r.timedOut
+                ? r.err + (r.err.isEmpty() ? u""_s : u"\n"_s) + u"[killed: timeout]"_s : r.err;
+            o.data = {{"stdout"_L1, r.out}, {"stderr"_L1, err}, {"exitCode"_L1, r.code},
+                      {"privilege"_L1, r.uid == 0 ? u"root"_s : u"shell"_s}};
+            done(o);
+        });
+        return;
+    }
+#else
+    Q_UNUSED(elevate)
+#endif
     const QStringList shell = shellInvocation(cmd);
 
     struct Run {

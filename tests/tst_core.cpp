@@ -23,6 +23,7 @@
 #include "mesh/MeshService.h"
 #include "mesh/Platform.h"
 #include "mesh/ScreenControl.h"
+#include "mesh/ReleaseInstall.h"
 #include "mesh/SelfUpdate.h"
 #include "mesh/ServiceInstall.h"
 
@@ -824,6 +825,99 @@ private slots:
         QCOMPARE(selfupdate::compareVersions(u"v1.2.0"_s, u"1.10.0"_s), -1);
         QCOMPARE(selfupdate::compareVersions(u"2.0.0-rc1"_s, u"2.0.0"_s), -1);
         QCOMPARE(selfupdate::compareVersions(u"talos-v1.0"_s, u"1.0.0"_s), 0);
+    }
+
+    void releaseReplacesTheProgramWhole()
+    {
+        QTemporaryDir dir;
+        const auto write = [&](const QString &name, const QByteArray &bytes) {
+            QFile f(dir.filePath(name));
+            [&] { QVERIFY(f.open(QIODevice::WriteOnly)); }();
+            f.write(bytes);
+            return dir.filePath(name);
+        };
+        const auto read = [](const QString &path) {
+            QFile f(path);
+            return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
+        };
+#if !defined(Q_OS_WIN)
+        const QString exe = write(u"Talos.AppImage"_s, "the old build");
+        const QString fresh = write(u"download"_s, QByteArray(70000, 'n'));
+        QString error;
+        QVERIFY(selfupdate::replaceFile(exe, fresh, &error));
+        QCOMPARE(read(exe), QByteArray(70000, 'n'));
+        QVERIFY(QFileInfo(exe).isExecutable());
+        QVERIFY(QFile::exists(fresh)); // the download is the caller's to clear
+        QVERIFY(!QFile::exists(dir.filePath(u".talos-update"_s)));
+
+        QVERIFY(!selfupdate::replaceFile(exe, dir.filePath(u"missing"_s), &error));
+        QVERIFY(!error.isEmpty());
+        QCOMPARE(read(exe), QByteArray(70000, 'n')); // untouched
+#endif
+        // Nothing on offer, nothing to do with it.
+        QCOMPARE(selfupdate::releaseMode(QString()), QString());
+        QCOMPARE(selfupdate::releaseMode(u"notes.txt"_s), QString());
+        const selfupdate::Applied a = selfupdate::applyRelease(dir.filePath(u"notes.txt"_s),
+                                                               u"9.9.9"_s);
+        QVERIFY(!a.ok);
+        QVERIFY(!a.error.isEmpty());
+    }
+
+    void silentInstallScripts()
+    {
+        // Paths go to a shell: whatever they contain stays one word.
+        const QString digest = u"ab"_s.repeated(32);
+        const QString stage = MeshService::stageApkScript(u"/sdcard/it's here/a b.apk"_s, digest);
+        QVERIFY(stage.contains(u"[ -f '/sdcard/it'\\''s here/a b.apk' ] || exit 3"_s));
+        QVERIFY(stage.contains(u"mktemp -d -p '/data/local/tmp' talos-update."_s));
+        QVERIFY(stage.contains(u"!= '%1' ]"_s.arg(digest)));
+        QVERIFY(stage.endsWith(u"echo \"$d\""_s));
+
+        const QString dir = u"/data/local/tmp/talos-update.Ab12"_s;
+        const QString keep = MeshService::installApkWorker(dir, digest, 3, false);
+        QVERIFY(keep.startsWith(u"sleep 3; "_s));
+        QVERIFY(keep.contains(u"pm install -r '%1/update.apk' > '%1/install.log'"_s.arg(dir)));
+        QVERIFY(!keep.contains(u" -d "_s));
+        QVERIFY(keep.contains(u"= '%1' ]"_s.arg(digest)));
+        QVERIFY(keep.endsWith(u"rm -f '%1/update.apk'"_s.arg(dir)));
+        QVERIFY(MeshService::installApkWorker(dir, QString(), 0, true)
+                    .contains(u"pm install -r -d "_s));
+        // Opened again only when the install went through.
+        QVERIFY(MeshService::installApkWorker(dir, digest, 1, false, u"dev.talos.client/.Main"_s)
+                    .contains(u"install.log' 2>&1 && am start -n 'dev.talos.client/.Main' >> "_s));
+#if defined(Q_OS_UNIX)
+        // The staging script's own logic, run here against a folder of ours.
+        QTemporaryDir tmp;
+        QFile apk(tmp.filePath(u"it's an.apk"_s));
+        QVERIFY(apk.open(QIODevice::WriteOnly));
+        apk.write("not really an apk");
+        apk.close();
+        QString script = MeshService::stageApkScript(apk.fileName(), QString());
+        script.replace(u"-p '/data/local/tmp' talos-update.XXXXXXXXXX"_s,
+                       u"'%1/talos-update.XXXXXXXXXX'"_s.arg(tmp.path()));
+        QProcess sh;
+        sh.start(u"/bin/sh"_s, {u"-c"_s, script});
+        QVERIFY(sh.waitForFinished(10'000));
+        QCOMPARE(sh.exitCode(), 0);
+        const QString staged = QString::fromUtf8(sh.readAllStandardOutput()).trimmed();
+        QVERIFY(staged.startsWith(tmp.path() + u"/talos-update."_s));
+        QVERIFY(QFile::exists(staged + u"/update.apk"_s));
+        // The same from the script's input, for a file the shell cannot read.
+        script = MeshService::stageApkScript(QString(), QString());
+        script.replace(u"-p '/data/local/tmp' talos-update.XXXXXXXXXX"_s,
+                       u"'%1/talos-update.XXXXXXXXXX'"_s.arg(tmp.path()));
+        sh.setStandardInputFile(apk.fileName());
+        sh.start(u"/bin/sh"_s, {u"-c"_s, script});
+        QVERIFY(sh.waitForFinished(10'000));
+        QCOMPARE(sh.exitCode(), 0);
+        QFile fed(QString::fromUtf8(sh.readAllStandardOutput()).trimmed() + u"/update.apk"_s);
+        QVERIFY(fed.open(QIODevice::ReadOnly));
+        QCOMPARE(fed.readAll(), QByteArray("not really an apk"));
+        sh.setStandardInputFile(QProcess::nullDevice());
+        sh.start(u"/bin/sh"_s, {u"-c"_s, MeshService::stageApkScript(tmp.filePath(u"none"_s), {})});
+        QVERIFY(sh.waitForFinished(10'000));
+        QCOMPARE(sh.exitCode(), 3);
+#endif
     }
 
     void serviceUnit()

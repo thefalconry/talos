@@ -241,6 +241,24 @@ jobs:
           ISCC.exe "-DAppVersion=$VERSION" "-DSourceDir=$STAGE/bin" "-Ftalos-windows-setup-$VERSION" "-O$PWD/dist" packaging/windows/talos.iss
           ls -la dist/
 
+      - name: Check a silent install starts the app again
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem dist\*.exe | Select-Object -First 1).FullName
+          $dir = Join-Path $env:RUNNER_TEMP "talos-install"
+          $run = Start-Process $setup -Wait -PassThru -ArgumentList `
+            "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS", "/relaunch=1", "/DIR=$dir"
+          if ($run.ExitCode -ne 0) { throw "setup exited with $($run.ExitCode)" }
+          if (-not (Test-Path (Join-Path $dir "unins000.exe"))) { throw "no uninstaller beside the app" }
+          $app = $null
+          foreach ($i in 1..150) {
+            $app = Get-Process talos -ErrorAction SilentlyContinue
+            if ($app) { break }
+            Start-Sleep -Milliseconds 200
+          }
+          if (-not $app) { throw "the installer did not start the app again" }
+          $app | Stop-Process -Force
+
       - name: Upload Windows Installer
         uses: actions/upload-artifact@v4
         with:

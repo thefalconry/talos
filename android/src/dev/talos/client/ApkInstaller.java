@@ -35,6 +35,27 @@ public class ApkInstaller extends BroadcastReceiver {
      * before the system is asked. Returns null once handed over.
      */
     public static String installUpdate(Context context, String path) {
+        String problem = updateProblem(context, path);
+        if (problem != null)
+            return problem;
+        if (!context.getPackageManager().canRequestPackageInstalls()) {
+            // Asked for now, not up front: an app that never updates
+            // itself never needs it.
+            try {
+                context.startActivity(
+                    new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                               Uri.parse("package:" + context.getPackageName()))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            } catch (RuntimeException e) {
+                // The message below says where to find it.
+            }
+            return "Allow Talos to install apps, then press Install again.";
+        }
+        return install(context, path);
+    }
+
+    /** Why the package at {@code path} cannot update this app, or null when it can. */
+    public static String updateProblem(Context context, String path) {
         PackageManager packages = context.getPackageManager();
         try {
             int flags = PackageManager.GET_SIGNING_CERTIFICATES;
@@ -50,20 +71,7 @@ public class ApkInstaller extends BroadcastReceiver {
         } catch (Exception e) {
             return "Couldn't read the downloaded package: " + e.getMessage();
         }
-        if (!packages.canRequestPackageInstalls()) {
-            // Asked for now, not up front: an app that never updates
-            // itself never needs it.
-            try {
-                context.startActivity(
-                    new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                               Uri.parse("package:" + context.getPackageName()))
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-            } catch (RuntimeException e) {
-                // The message below says where to find it.
-            }
-            return "Allow Talos to install apps, then press Install again.";
-        }
-        return install(context, path);
+        return null;
     }
 
     private static Signature[] signers(PackageInfo info) {

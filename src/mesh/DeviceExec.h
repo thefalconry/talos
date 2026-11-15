@@ -23,7 +23,9 @@ struct CommandOutcome {
 /// `list_dir`, `stat`, `delete`, `mkdir` and `move`.
 ///
 /// Commands run as the user running the app, in the user's own shell
-/// environment. Nothing here asks for more privilege than that.
+/// environment. The one exception is a phone whose owner runs Shizuku and
+/// allowed this app there: with allowElevation, `exec` runs as the shell
+/// user, and falls back to the app's own when Shizuku cannot be reached.
 class DeviceExec : public QObject
 {
     Q_OBJECT
@@ -47,6 +49,8 @@ public:
     /// this executor does not implement.
     bool handle(const QString &name, const QJsonObject &params, Done done);
 
+    /// Whether `exec` may go through Shizuku (Android).
+    std::function<bool()> allowElevation = [] { return false; };
     /// The largest file a mesh write may produce, in bytes.
     std::function<qint64()> writeLimit = [] { return kDefaultMaxWriteBytes; };
 
@@ -58,7 +62,8 @@ public:
     CommandOutcome deletePath(const QString &path) const;
     CommandOutcome makeDir(const QString &path) const;
     CommandOutcome movePath(const QString &from, const QString &to) const;
-    void exec(const QString &cmd, const QString &cwd, int timeoutMs, Done done);
+    void exec(const QString &cmd, const QString &cwd, int timeoutMs, Done done,
+              bool elevate = true);
 };
 
 } // namespace talos

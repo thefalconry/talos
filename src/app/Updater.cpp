@@ -4,7 +4,9 @@
 #include "core/AppLog.h"
 #include "core/Models.h"
 #include "core/Store.h"
+#include "mesh/MeshService.h"
 #include "mesh/Platform.h"
+#include "mesh/ReleaseInstall.h"
 #include "mesh/SelfUpdate.h"
 
 #include <QCryptographicHash>
@@ -13,6 +15,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QFutureWatcher>
+#include <QGuiApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -21,6 +25,7 @@
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <QSysInfo>
+#include <QtConcurrentRun>
 
 namespace talos {
 
@@ -34,7 +39,8 @@ Updater::Updater(Store *store, QObject *parent) : QObject(parent), m_store(store
     // On launch (after things settle) and every six hours.
     m_timer.setInterval(6 * 3600 * 1000);
     connect(&m_timer, &QTimer::timeout, this, [this] {
-        if (m_store->prefBool(u"updateAutoCheck"_s) && m_state != "downloading"_L1)
+        if (m_store->prefBool(u"updateAutoCheck"_s) && m_state != "downloading"_L1
+            && m_state != "installing"_L1)
             check(false);
     });
     m_timer.start();
@@ -43,7 +49,7 @@ Updater::Updater(Store *store, QObject *parent) : QObject(parent), m_store(store
             check(false);
     });
     connect(m_store, &Store::prefChanged, this, [this](const QString &key) {
-        if (key != "updateRepo"_L1 || m_state == "downloading"_L1)
+        if (key != "updateRepo"_L1 || m_state == "downloading"_L1 || m_state == "installing"_L1)
             return;
         m_latest.clear();
         set(repo().isEmpty() ? u"unconfigured"_s : u"idle"_s);
@@ -60,6 +66,19 @@ QString Updater::repo() const
 QString Updater::assetSize() const
 {
     return formatBytes(m_assetBytes);
+}
+
+QString Updater::installs() const
+{
+    if (platform::name() == "android"_L1)
+        return platform::elevation().ready() && (m_file.isEmpty() || m_verified)
+            ? u"restart"_s : u"system"_s;
+    // A download that could not be checked is never put in place unasked,
+    // and one that could not be put in place is handed over instead.
+    if (!selfupdate::releaseMode(m_assetName).isEmpty() && (m_file.isEmpty() || m_verified)
+        && !m_handOver)
+        return u"restart"_s;
+    return platform::name() == "linux"_L1 ? u"folder"_s : u"system"_s;
 }
 
 QString Updater::lastChecked() const
@@ -156,7 +175,7 @@ void Updater::check(bool asked)
         set(u"unconfigured"_s);
         return;
     }
-    if (m_state == "checking"_L1 || m_state == "downloading"_L1)
+    if (m_state == "checking"_L1 || m_state == "downloading"_L1 || m_state == "installing"_L1)
         return;
     set(u"checking"_s);
     QNetworkRequest req(QUrl(u"https://api.github.com/repos/%1/releases/latest"_s.arg(r)));
@@ -182,8 +201,7 @@ void Updater::check(bool asked)
         m_releaseUrl = httpsOnly(rel["html_url"_L1].toString());
         if (m_latest.isEmpty() || compareVersions(m_latest, currentVersion()) <= 0) {
             // Nothing newer: what an earlier update left behind can go.
-            if (platform::name() == "android"_L1)
-                QDir(updateDir()).removeRecursively();
+            QDir(QDir(m_store->cacheDir()).filePath(u"updates"_s)).removeRecursively();
             set(u"current"_s);
             return;
         }
@@ -224,9 +242,20 @@ void Updater::check(bool asked)
         }
         m_file.clear();
         m_verified = false;
+        m_handOver = false;
         AppLog::info("update", u"version %1 is available"_s.arg(m_latest));
         set(u"available"_s);
     });
+}
+
+void Updater::update()
+{
+    if (m_state == "ready"_L1) {
+        install();
+        return;
+    }
+    m_thenInstall = true;
+    download();
 }
 
 void Updater::download()
@@ -234,6 +263,7 @@ void Updater::download()
     if (m_state != "available"_L1)
         return;
     if (m_assetUrl.isEmpty()) {
+        m_thenInstall = false;
         openReleasePage();
         return;
     }
@@ -243,6 +273,7 @@ void Updater::download()
     auto *out = new QSaveFile(path);
     if (!out->open(QIODevice::WriteOnly)) {
         delete out;
+        m_thenInstall = false;
         set(u"error"_s, u"Couldn't write to %1"_s.arg(dir));
         return;
     }
@@ -265,6 +296,7 @@ void Updater::download()
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
             out->cancelWriting();
+            m_thenInstall = false;
             if (reply->error() == QNetworkReply::OperationCanceledError)
                 set(u"available"_s);
             else
@@ -272,6 +304,7 @@ void Updater::download()
             return;
         }
         if (!out->commit()) {
+            m_thenInstall = false;
             set(u"error"_s, u"Couldn't finish writing the download"_s);
             return;
         }
@@ -291,6 +324,12 @@ void Updater::verify(const QString &path)
             QFile::setPermissions(path, QFile::permissions(path) | QFile::ExeOwner);
 #endif
         set(u"ready"_s);
+        // Asked for in one go: carry on, unless the app has been left in
+        // the meantime, where a system prompt would open over something
+        // else or not at all.
+        if (std::exchange(m_thenInstall, false)
+            && QGuiApplication::applicationState() == Qt::ApplicationActive)
+            install();
     };
     if (m_checksumUrl.isEmpty()) {
         finish(false);
@@ -304,6 +343,7 @@ void Updater::verify(const QString &path)
         reply->deleteLater();
         const QString sums = QString::fromUtf8(reply->readAll());
         if (reply->error() != QNetworkReply::NoError || sums.isEmpty()) {
+            m_thenInstall = false;
             QFile::remove(path);
             set(u"error"_s, u"Couldn't fetch the release's checksums, so the download "
                             "was discarded."_s);
@@ -312,6 +352,7 @@ void Updater::verify(const QString &path)
         QFile f(path);
         QCryptographicHash hash(QCryptographicHash::Sha256);
         if (!f.open(QIODevice::ReadOnly) || !hash.addData(&f)) {
+            m_thenInstall = false;
             set(u"error"_s, u"Couldn't read the download back"_s);
             return;
         }
@@ -330,6 +371,7 @@ void Updater::verify(const QString &path)
                 match = true;
         }
         if (!match) {
+            m_thenInstall = false;
             QFile::remove(path);
             set(u"error"_s, u"The download didn't match the release's published checksum "
                             "and was deleted."_s);
@@ -347,22 +389,66 @@ void Updater::cancel()
 
 QString Updater::updateDir() const
 {
-    // A phone's update stays in the app's own cache: only the system
-    // installer needs to read it, and it is cleared once it is installed.
-    if (platform::name() == "android"_L1)
+    // An update the app installs itself stays in its own cache, cleared
+    // once it is installed: nobody needs to find it.
+    if (platform::name() == "android"_L1 || !selfupdate::releaseMode(m_assetName).isEmpty())
         return QDir(m_store->cacheDir()).filePath(u"updates"_s);
     return QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
 }
 
 void Updater::install()
 {
-    if (m_file.isEmpty())
+    if (m_file.isEmpty() || m_state != "ready"_L1)
         return;
     if (platform::name() == "android"_L1) {
+        // With Shizuku allowed, the shell installs it without a question
+        // and opens the app again.
+        if (m_verified && platform::elevation().ready()
+            && platform::updateProblem(m_file).isEmpty()) {
+            set(u"installing"_s);
+            // The install ends this app when it works. Still here after a
+            // while, it did not: Android's own installer is the other way.
+            QTimer::singleShot(45'000, this, [this] {
+                if (m_state == "installing"_L1)
+                    set(u"ready"_s, platform::installUpdate(m_file));
+            });
+            auto *watcher = new QFutureWatcher<CommandOutcome>(this);
+            connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher] {
+                watcher->deleteLater();
+                if (!watcher->result().ok) {
+                    AppLog::info("update", u"not installed through Shizuku: %1"_s
+                                               .arg(watcher->result().message));
+                    set(u"ready"_s, platform::installUpdate(m_file));
+                }
+            });
+            watcher->setFuture(QtConcurrent::run([file = m_file] {
+                return MeshService::installThroughShizuku(file, {}, 1000, false,
+                                                          platform::launchComponent(), true);
+            }));
+            return;
+        }
         // Android's own installer takes it from here and asks the person.
         // A refusal before that (not this app, another key, not yet
         // allowed to install) is said where the button is.
         set(u"ready"_s, platform::installUpdate(m_file));
+        return;
+    }
+    // Only what matched the release's checksum goes in by itself.
+    if (m_verified && !m_handOver && !selfupdate::releaseMode(m_file).isEmpty()) {
+        set(u"installing"_s);
+        auto *watcher = new QFutureWatcher<selfupdate::Applied>(this);
+        connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher] {
+            watcher->deleteLater();
+            const selfupdate::Applied a = watcher->result();
+            if (!a.ok) {
+                m_handOver = true;
+                set(u"ready"_s, a.error);
+                return;
+            }
+            AppLog::info("update", u"version %1 is in place, restarting"_s.arg(m_latest));
+            emit restartInto(a.program, a.arguments, a.discard, a.afterExit);
+        });
+        watcher->setFuture(QtConcurrent::run(selfupdate::applyRelease, m_file, m_latest));
         return;
     }
 #if defined(Q_OS_LINUX)

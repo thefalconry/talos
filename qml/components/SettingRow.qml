@@ -51,7 +51,8 @@ Item {
     }
 
     // On a narrow window a wide control (a row of choices) would squeeze
-    // the label into a few letters a line: there it goes underneath.
+    // the label, or the explanation under it, into a few letters a line:
+    // there it goes underneath.
     TextMetrics {
         id: titleSize
         font.pixelSize: Theme.body
@@ -61,7 +62,8 @@ Item {
                                      - (root.iconName !== "" ? 18 + layout.columnSpacing : 0)
                                      - (root.chevron ? 16 + layout.columnSpacing : 0)
     readonly property bool stacked: slot.implicitWidth > 0
-                                    && textRoom < Math.min(titleSize.advanceWidth + 2, 150)
+                                    && textRoom < (root.subtitle !== "" ? 150
+                                                   : Math.min(titleSize.advanceWidth + 2, 150))
 
     GridLayout {
         id: layout
