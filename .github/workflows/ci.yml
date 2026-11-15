@@ -246,8 +246,13 @@ jobs:
         run: |
           $setup = (Get-ChildItem dist\*.exe | Select-Object -First 1).FullName
           $dir = Join-Path $env:RUNNER_TEMP "talos-install"
-          $run = Start-Process $setup -Wait -PassThru -ArgumentList `
+          $run = Start-Process $setup -PassThru -ArgumentList `
             "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS", "/relaunch=1", "/DIR=$dir"
+          $null = $run.Handle
+          if (-not $run.WaitForExit(300000)) {
+            Get-Process | Where-Object { $_.Name -match "talos|setup|is-" } | Format-Table Id, Name, StartTime
+            throw "setup was still running after five minutes"
+          }
           if ($run.ExitCode -ne 0) { throw "setup exited with $($run.ExitCode)" }
           if (-not (Test-Path (Join-Path $dir "unins000.exe"))) { throw "no uninstaller beside the app" }
           $app = $null
