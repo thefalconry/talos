@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(Talos
-    VERSION 1.0.6
+    VERSION 1.0.7
     DESCRIPTION "Talos, a desktop and mobile client for the Talon agent"
     LANGUAGES C CXX)
 

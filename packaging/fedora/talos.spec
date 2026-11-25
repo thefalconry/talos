@@ -8,7 +8,7 @@
 %global debug_package %{nil}
 
 Name:           talos
-Version:        1.0.6
+Version:        1.0.7
 Release:        1%{?dist}
 Summary:        Desktop client for the Talon agent
 
@@ -69,6 +69,10 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/dev.talos.client.desk
 %{_datadir}/icons/hicolor/scalable/apps/dev.talos.client.svg
 
 %changelog
+* Wed Nov 25 2026 RisenID <94130108+RisenID@users.noreply.github.com> - 1.0.7-1
+- Updates download and install themselves, then restart Talos; on Android
+  the installer opens in the app; the mesh can run commands through Shizuku
+
 * Sat Nov 14 2026 RisenID <94130108+RisenID@users.noreply.github.com> - 1.0.6-1
 - Android: in-app updates, targets Android 17, wallpaper colours, bars in the
   page's colour; a release can be skipped on every platform
