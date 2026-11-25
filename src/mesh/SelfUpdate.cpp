@@ -9,6 +9,18 @@
 #include <QRegularExpression>
 #include <cstdio>
 
+// The marker a build is recognised by. Nothing reads it, so it is kept by
+// name: an optimiser may drop an unreferenced constant, as MSVC 14.52 does.
+#if defined(_MSC_VER)
+#pragma comment(linker, "/INCLUDE:talos_build_marker")
+#endif
+extern "C" {
+#if defined(__GNUC__)
+__attribute__((used))
+#endif
+extern const char talos_build_marker[] = "TALOS-BUILD-" "VERSION:" TALOS_VERSION ";";
+}
+
 namespace talos::selfupdate {
 
 using namespace Qt::StringLiterals;
@@ -16,18 +28,10 @@ using namespace Qt::StringLiterals;
 namespace {
 
 // Built from two halves so the only complete marker in the binary is the
-// one below with a version behind it.
-// The marker itself. `used` keeps the linker from discarding it.
-#if defined(__GNUC__)
-__attribute__((used))
-#endif
-extern const char kBuildMarker[] = "TALOS-BUILD-" "VERSION:" TALOS_VERSION ";";
-
+// one above with a version behind it.
 const QByteArray &markerPrefix()
 {
     static const QByteArray prefix = QByteArray("TALOS-BUILD-") + QByteArray("VERSION:");
-    volatile const char *p = kBuildMarker;
-    (void)p;
     return prefix;
 }
 
