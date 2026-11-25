@@ -208,7 +208,13 @@ jobs:
             -DTALOS_BUILD_TESTS=ON \
             -DTALOS_UPDATE_REPO=thefalconry/talos
           cmake --build build
-          ctest --test-dir build --output-on-failure
+          # QtTest's Windows output never reaches the log, so a failure is
+          # run again with its results in a file.
+          ctest --test-dir build --output-on-failure || {
+            build/talos_tests.exe -o build/talos_tests.txt,txt || true
+            grep -vE '^(PASS|QDEBUG|QINFO|QWARN) ' build/talos_tests.txt || true
+            exit 1
+          }
 
       - name: Package Windows Installer
         run: |
