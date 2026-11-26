@@ -38,6 +38,7 @@
 #include <QJsonDocument>
 #include <QProcess>
 #include <QSignalSpy>
+#include <QXmlStreamReader>
 #include <QSslSocket>
 #include <QStandardPaths>
 #include <QTemporaryDir>
@@ -977,6 +978,32 @@ private slots:
         QCOMPARE(ScreenControl::macKeyCode(key), -1);
         QCOMPARE(ScreenControl::macKeyCode(ScreenControl::keysymFor(u"€"_s)), -1);
         QCOMPARE(ScreenControl::macKeyCode(0xffbe + 24), -1); // past F20
+    }
+
+    void bootDaemonPlist()
+    {
+        // Ported from talon PR 1374: the daemon runs as the account, never
+        // root, with that account's HOME, and every value is XML-escaped.
+        const QString text = service::daemonText(u"/Applications/A&B.app/Contents/MacOS/talos"_s,
+                                                 u"dylan"_s, u"/Users/dylan"_s,
+                                                 u"/tmp/<scratch>"_s, u"/Users/dylan/Library/Logs/Talos/mesh.log"_s);
+        QVERIFY(text.contains(u"<key>UserName</key><string>dylan</string>"_s));
+        QVERIFY(text.contains(u"<key>HOME</key><string>/Users/dylan</string>"_s));
+        QVERIFY(text.contains(u"<string>/Applications/A&amp;B.app/Contents/MacOS/talos</string>"_s));
+        QVERIFY(text.contains(u"<key>TALOS_HOME</key><string>/tmp/&lt;scratch&gt;</string>"_s));
+        QVERIFY(text.contains(u"<string>--headless</string>"_s));
+        QVERIFY(!text.contains(u"root"_s));
+        // Well-formed: it parses as XML.
+        QXmlStreamReader xml(text);
+        while (!xml.atEnd())
+            xml.readNext();
+        QVERIFY2(!xml.hasError(), qPrintable(xml.errorString()));
+#if !defined(Q_OS_MACOS)
+        QVERIFY(!service::atBoot());
+        QString error;
+        QVERIFY(!service::installAtBoot(&error));
+        QVERIFY(!error.isEmpty());
+#endif
     }
 
     void thisMac()
