@@ -174,13 +174,22 @@ int runWithoutDisplay(int argc, char *argv[], bool serviceCommand)
             out << "talos: connect the app to Talon first; the service uses that connection.\n";
             return 2;
         }
-        if (!talos::service::enable(&store, &error)) {
+        const bool atBoot = core.arguments().contains(u"--at-boot"_s);
+        out.flush();
+        if (!(atBoot ? talos::service::enableAtBoot(&store, &error)
+                     : talos::service::enable(&store, &error))) {
             out << "talos: " << error << "\n";
             return 1;
         }
         out << "Installed and started " << talos::service::unitPath() << "\n";
 #if defined(Q_OS_MACOS)
-        out << "It runs whenever you are signed in to this Mac.\n";
+        if (atBoot) {
+            out << "It starts when this Mac boots, before anyone signs in, and runs as you.\n"
+                   "Until someone signs in there is no screen, so screen control waits for that.\n";
+        } else {
+            out << "It runs whenever you are signed in to this Mac. To start it at boot "
+                   "instead: talos service install --at-boot\n";
+        }
 #else
         if (!talos::service::lingering())
             out << "It stops when you sign out. To keep it running across sign-outs and "
@@ -196,7 +205,7 @@ int runWithoutDisplay(int argc, char *argv[], bool serviceCommand)
         out << "Removed the background service.\n";
         return 0;
     }
-    out << "usage: talos service install|uninstall|status\n";
+    out << "usage: talos service install [--at-boot]|uninstall|status\n";
     return 64;
 }
 

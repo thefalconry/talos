@@ -12,7 +12,10 @@
 #include <QStandardPaths>
 
 #if defined(Q_OS_MACOS)
+#  include <pwd.h>
+#  include <sys/stat.h>
 #  include <unistd.h>
+#  include <QTemporaryFile>
 #endif
 
 namespace talos::service {
@@ -53,6 +56,62 @@ QString agentTarget()
 {
     return agentDomain() + u'/' + kAgent;
 }
+
+const QString kDaemonPath = u"/Library/LaunchDaemons/%1.plist"_s.arg(kAgent);
+
+QString daemonTarget()
+{
+    return u"system/"_s + kAgent;
+}
+
+/// Run as root through sudo, with the terminal attached so sudo can ask for
+/// the password there. As root already, run it directly.
+Ran runPrivileged(const QStringList &command)
+{
+    QProcess p;
+    if (geteuid() == 0) {
+        p.setProcessChannelMode(QProcess::MergedChannels);
+        p.start(command.first(), command.mid(1));
+    } else {
+        p.setProcessChannelMode(QProcess::ForwardedChannels);
+        p.setInputChannelMode(QProcess::ForwardedInputChannel);
+        p.start(u"/usr/bin/sudo"_s, command);
+    }
+    if (!p.waitForStarted(3000) || !p.waitForFinished(120'000)) {
+        p.kill();
+        return {false, u"%1 did not finish"_s.arg(command.first())};
+    }
+    return {p.exitStatus() == QProcess::NormalExit && p.exitCode() == 0,
+            QString::fromUtf8(p.readAll()).trimmed()};
+}
+
+/// A file that a launchd job runs as this user must not be replaceable by
+/// anyone else: owned by the user or root, and writable by neither group nor
+/// others, all the way up the bundle.
+bool safeToRun(const QString &path, uid_t uid, QString *why)
+{
+    QString at = QFileInfo(path).canonicalFilePath();
+    if (at.isEmpty()) {
+        *why = u"%1 doesn't exist"_s.arg(path);
+        return false;
+    }
+    for (int depth = 0; depth < 6 && !at.isEmpty() && at != u"/"_s; ++depth) {
+        struct stat st {};
+        if (::stat(QFile::encodeName(at).constData(), &st) != 0) {
+            *why = u"can't check %1"_s.arg(at);
+            return false;
+        }
+        const bool sticky = S_ISDIR(st.st_mode) && (st.st_mode & S_ISVTX);
+        if ((st.st_uid != uid && st.st_uid != 0) || (!sticky && (st.st_mode & (S_IWGRP | S_IWOTH)))) {
+            *why = u"another user could replace %1"_s.arg(at);
+            return false;
+        }
+        if (at.endsWith(u".app"_s))
+            break; // the bundle's own folder is the last one that matters
+        at = QFileInfo(at).absolutePath();
+    }
+    return true;
+}
 #endif
 
 } // namespace
@@ -71,6 +130,8 @@ bool supported()
 QString unitPath()
 {
 #if defined(Q_OS_MACOS)
+    if (QFile::exists(kDaemonPath))
+        return kDaemonPath;
     return QDir::home().filePath(u"Library/LaunchAgents/%1.plist"_s.arg(kAgent));
 #else
     return QDir(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation))
@@ -130,6 +191,47 @@ QString agentText(const QString &exe, const QString &home, const QString &log)
            "</plist>\n"_s.arg(kAgent, exe.toHtmlEscaped(), environment, output);
 }
 
+QString daemonText(const QString &exe, const QString &user, const QString &userHome,
+                   const QString &talosHome, const QString &log)
+{
+    QString environment = u"    <key>HOME</key><string>%1</string>\n"_s.arg(userHome.toHtmlEscaped());
+    if (!talosHome.isEmpty())
+        environment += u"    <key>TALOS_HOME</key><string>%1</string>\n"_s.arg(talosHome.toHtmlEscaped());
+    QString output;
+    if (!log.isEmpty()) {
+        output = u"  <key>StandardErrorPath</key><string>%1</string>\n"_s
+                     .arg(log.toHtmlEscaped());
+    }
+    return u"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+           "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" "
+           "\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
+           "<plist version=\"1.0\">\n"
+           "<dict>\n"
+           "  <key>Label</key><string>%1</string>\n"
+           "  <key>ProgramArguments</key>\n"
+           "  <array><string>%2</string><string>--headless</string></array>\n"
+           "  <key>UserName</key><string>%3</string>\n"
+           "  <key>EnvironmentVariables</key>\n"
+           "  <dict>\n%4  </dict>\n"
+           "  <key>RunAtLoad</key><true/>\n"
+           "  <key>KeepAlive</key><true/>\n"
+           "  <key>ThrottleInterval</key><integer>5</integer>\n"
+           "  <key>ProcessType</key><string>Background</string>\n"
+           "%5"
+           "</dict>\n"
+           "</plist>\n"_s.arg(kAgent, exe.toHtmlEscaped(), user.toHtmlEscaped(), environment,
+                                output);
+}
+
+bool atBoot()
+{
+#if defined(Q_OS_MACOS)
+    return QFile::exists(kDaemonPath);
+#else
+    return false;
+#endif
+}
+
 bool installed()
 {
     return QFile::exists(unitPath());
@@ -140,7 +242,8 @@ QString state()
     if (!supported() || !installed())
         return u"not installed"_s;
 #if defined(Q_OS_MACOS)
-    const Ran r = run(u"/bin/launchctl"_s, {u"print"_s, agentTarget()});
+    const Ran r = run(u"/bin/launchctl"_s,
+                      {u"print"_s, atBoot() ? daemonTarget() : agentTarget()});
     if (!r.ok)
         return u"inactive"_s;
     // "state = running" among the lines launchd prints about a service.
@@ -204,6 +307,72 @@ bool install(QString *error)
 #endif
 }
 
+bool installAtBoot(QString *error)
+{
+#if defined(Q_OS_MACOS)
+    if (geteuid() == 0) {
+        *error = u"Run this as yourself, not with sudo: the service runs as you, and sudo "
+                 "asks for your password for the one step that needs it."_s;
+        return false;
+    }
+    const uid_t uid = getuid();
+    const passwd *pw = getpwuid(uid);
+    if (!pw || !pw->pw_name || !pw->pw_dir) {
+        *error = u"Couldn't tell which account this is."_s;
+        return false;
+    }
+    const QString user = QString::fromUtf8(pw->pw_name);
+    const QString home = QString::fromUtf8(pw->pw_dir);
+    const QString exe = QFileInfo(selfupdate::ownExecutable()).canonicalFilePath();
+    QString why;
+    if (!safeToRun(exe, uid, &why) || !safeToRun(home, uid, &why)) {
+        *error = u"Not starting this at boot: %1."_s.arg(why);
+        return false;
+    }
+    const QString logDir = QDir(home).filePath(u"Library/Logs/Talos"_s);
+    QDir().mkpath(logDir);
+    const QString log = QDir(logDir).filePath(u"mesh.log"_s);
+    QFile::remove(log);
+
+    QTemporaryFile plist(QDir::temp().filePath(u"talos-daemon-XXXXXX.plist"_s));
+    if (!plist.open()) {
+        *error = u"Couldn't write the service file: %1"_s.arg(plist.errorString());
+        return false;
+    }
+    plist.write(daemonText(exe, user, home, qEnvironmentVariable("TALOS_HOME"), log).toUtf8());
+    plist.close();
+
+    // One device identity: the agent stops before the daemon starts.
+    const bool hadAgent = QFile::exists(QDir::home().filePath(
+        u"Library/LaunchAgents/%1.plist"_s.arg(kAgent)));
+    run(u"/bin/launchctl"_s, {u"bootout"_s, agentTarget()});
+
+    // Copied in as root:wheel 0644, so only root can change what it runs.
+    const QString script = u"set -e\n"
+                           "/usr/bin/install -m 0644 -o root -g wheel \"$1\" \"$2\"\n"
+                           "/bin/launchctl bootout \"$3\" 2>/dev/null || true\n"
+                           "/bin/launchctl enable \"$3\"\n"
+                           "/bin/launchctl bootstrap system \"$2\"\n"_s;
+    const Ran r = runPrivileged({u"/bin/sh"_s, u"-c"_s, script, u"sh"_s, plist.fileName(),
+                                 kDaemonPath, daemonTarget()});
+    if (!r.ok) {
+        runPrivileged({u"/bin/rm"_s, u"-f"_s, kDaemonPath});
+        if (hadAgent) {
+            QString again;
+            install(&again); // back to how it was
+        }
+        *error = u"The service didn't start at boot level%1"_s.arg(
+            r.out.isEmpty() ? u"."_s : u": "_s + r.out);
+        return false;
+    }
+    QFile::remove(QDir::home().filePath(u"Library/LaunchAgents/%1.plist"_s.arg(kAgent)));
+    return true;
+#else
+    *error = u"Starting at boot this way is for macOS; elsewhere use the user service."_s;
+    return false;
+#endif
+}
+
 bool lingering()
 {
 #if defined(Q_OS_MACOS)
@@ -227,6 +396,22 @@ bool uninstall(QString *error)
         return false;
     }
 #if defined(Q_OS_MACOS)
+    if (atBoot()) {
+        // Only root can take a boot-time daemon away; without a terminal for
+        // sudo to ask on (the app's own switch), say how instead of hanging.
+        if (geteuid() != 0 && !isatty(STDIN_FILENO)) {
+            *error = u"This service starts at boot. Remove it in Terminal: talos service uninstall"_s;
+            return false;
+        }
+        const Ran r = runPrivileged({u"/bin/sh"_s, u"-c"_s,
+                                     u"/bin/launchctl bootout \"$1\" 2>/dev/null; /bin/rm -f \"$2\""_s,
+                                     u"sh"_s, daemonTarget(), kDaemonPath});
+        if (!r.ok || atBoot()) {
+            *error = u"Couldn't remove %1%2"_s.arg(kDaemonPath, r.out.isEmpty() ? QString() : u": "_s + r.out);
+            return false;
+        }
+        return true;
+    }
     run(u"/bin/launchctl"_s, {u"bootout"_s, agentTarget()});
 #else
     run(u"systemctl"_s, {u"--user"_s, u"disable"_s, u"--now"_s, kUnit});
@@ -246,6 +431,10 @@ void restart()
     if (!supported() || !installed())
         return;
 #if defined(Q_OS_MACOS)
+    // A boot-time daemon belongs to root's domain; the headless process
+    // exits into the new build itself and KeepAlive starts it again.
+    if (atBoot())
+        return;
     run(u"/bin/launchctl"_s, {u"kickstart"_s, u"-k"_s, agentTarget()});
 #else
     run(u"systemctl"_s, {u"--user"_s, u"try-restart"_s, kUnit});
@@ -264,6 +453,21 @@ bool enable(Store *store, QString *error)
     store->setPref(u"meshService"_s, false);
     store->setSecretsInFile(false);
     store->flush();
+    return false;
+}
+
+bool enableAtBoot(Store *store, QString *error)
+{
+    store->setPref(u"meshService"_s, true);
+    store->setSecretsInFile(true);
+    store->flush();
+    if (installAtBoot(error))
+        return true;
+    if (!installed()) {
+        store->setPref(u"meshService"_s, false);
+        store->setSecretsInFile(false);
+        store->flush();
+    }
     return false;
 }
 
