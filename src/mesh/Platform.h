@@ -19,8 +19,18 @@ struct Battery {
 };
 Battery battery();
 
-/// OS, hardware, locale, timezone and network for the `status` command.
+/// OS, hardware, locale, timezone and network for the `status` command, plus
+/// uptime, load, memory and disk on desktops — the same fields, in the same
+/// wording, that the headless talon-node reports.
 QVariantMap systemInfo();
+
+/// Bytes the way the node prints them: "512 B", "3.2 GB" (1024-based).
+QString formatBytes(quint64 bytes);
+/// A duration the way the node prints one: "12s", "4m0s", "26h3m4s".
+QString formatUptime(qint64 seconds);
+/// "<free> free of <total>", optionally " on <where>"; empty when the
+/// numbers can't be right (no total, or more free than there is).
+QString formatFreeOf(quint64 free, quint64 total, const QString &where = {});
 
 /// True inside Flatpak or Snap, where shell and file commands would reach
 /// only the sandbox and never the host the daemon believes it is driving.

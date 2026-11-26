@@ -979,6 +979,40 @@ private slots:
         QCOMPARE(ScreenControl::macKeyCode(0xffbe + 24), -1); // past F20
     }
 
+    void hostTelemetryFormat()
+    {
+        // The node's own wording, so a status reads the same from either.
+        QCOMPARE(platform::formatBytes(0), u"0 B"_s);
+        QCOMPARE(platform::formatBytes(1023), u"1023 B"_s);
+        QCOMPARE(platform::formatBytes(1024), u"1.0 KB"_s);
+        QCOMPARE(platform::formatBytes(quint64(3.5 * 1024 * 1024 * 1024)), u"3.5 GB"_s);
+        QCOMPARE(platform::formatUptime(12), u"12s"_s);
+        QCOMPARE(platform::formatUptime(240), u"4m0s"_s);
+        QCOMPARE(platform::formatUptime(93784), u"26h3m4s"_s);
+        QCOMPARE(platform::formatUptime(-5), u"0s"_s);
+        QCOMPARE(platform::formatFreeOf(1024, 2048), u"1.0 KB free of 2.0 KB"_s);
+        QCOMPARE(platform::formatFreeOf(1024, 2048, u"C:"_s), u"1.0 KB free of 2.0 KB on C:"_s);
+        QVERIFY(platform::formatFreeOf(1, 0).isEmpty());
+        QVERIFY(platform::formatFreeOf(3, 2).isEmpty());
+    }
+
+    void hostTelemetry()
+    {
+#if defined(Q_OS_ANDROID) || defined(Q_OS_IOS)
+        QSKIP("desktops only");
+#else
+        const QVariantMap info = platform::systemInfo();
+        QVERIFY2(info.value(u"uptime"_s).toString().endsWith(u's'), qPrintable(info.value(u"uptime"_s).toString()));
+        QVERIFY2(info.value(u"memory"_s).toString().contains(u" free of "_s), qPrintable(info.value(u"memory"_s).toString()));
+        QVERIFY2(info.value(u"disk"_s).toString().contains(u" free of "_s), qPrintable(info.value(u"disk"_s).toString()));
+#  if defined(Q_OS_WIN)
+        QVERIFY(!info.contains(u"load"_s)); // Windows has no load average
+#  else
+        QCOMPARE(info.value(u"load"_s).toString().split(u' ').size(), 3);
+#  endif
+#endif
+    }
+
     void thisMac()
     {
 #if !defined(Q_OS_MACOS)

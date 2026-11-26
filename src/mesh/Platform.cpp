@@ -30,6 +30,14 @@
 #  include <sys/sysctl.h>
 #endif
 
+#if !defined(Q_OS_WIN) && !defined(Q_OS_ANDROID) && !defined(Q_OS_IOS)
+#  include <cstdlib>       // getloadavg
+#  include <sys/statvfs.h>
+#endif
+#if defined(Q_OS_MACOS)
+#  include <sys/time.h>
+#endif
+
 namespace talos::platform {
 
 using namespace Qt::StringLiterals;
@@ -184,6 +192,136 @@ Battery battery()
     return b;
 }
 
+QString formatBytes(quint64 bytes)
+{
+    if (bytes < 1024)
+        return u"%1 B"_s.arg(bytes);
+    quint64 div = 1024;
+    int exp = 0;
+    for (quint64 n = bytes / 1024; n >= 1024; n /= 1024) {
+        div *= 1024;
+        ++exp;
+    }
+    return u"%1 %2B"_s.arg(double(bytes) / double(div), 0, 'f', 1)
+        .arg(QChar::fromLatin1("KMGTPE"[exp]));
+}
+
+QString formatUptime(qint64 seconds)
+{
+    if (seconds < 0)
+        seconds = 0;
+    const qint64 h = seconds / 3600, m = (seconds % 3600) / 60, s = seconds % 60;
+    if (h > 0)
+        return u"%1h%2m%3s"_s.arg(h).arg(m).arg(s);
+    if (m > 0)
+        return u"%1m%2s"_s.arg(m).arg(s);
+    return u"%1s"_s.arg(s);
+}
+
+QString formatFreeOf(quint64 free, quint64 total, const QString &where)
+{
+    if (total == 0 || free > total)
+        return {};
+    QString text = u"%1 free of %2"_s.arg(formatBytes(free), formatBytes(total));
+    if (!where.isEmpty())
+        text += u" on "_s + where;
+    return text;
+}
+
+namespace {
+
+void putIfSet(QVariantMap &info, const QString &key, const QString &value)
+{
+    if (!value.isEmpty())
+        info[key] = value;
+}
+
+#if defined(Q_OS_MACOS)
+/// An integer sysctl of either width; these names vary between kernels.
+bool sysctlUint(const char *name, quint64 &out)
+{
+    quint64 value = 0;
+    size_t size = sizeof value;
+    if (sysctlbyname(name, &value, &size, nullptr, 0) != 0 || size == 0 || size > sizeof value)
+        return false;
+    out = value; // little-endian: a 4-byte answer fills the low half
+    return true;
+}
+#endif
+
+/// Uptime, load, memory and disk, each left out when its probe fails. Native
+/// calls only: no subprocesses, so a status request stays cheap.
+void addHostTelemetry(QVariantMap &info)
+{
+#if defined(Q_OS_WIN)
+    // Ported from talon PR 1376 by Dylan Neve. Windows has no load average.
+    info[u"uptime"_s] = formatUptime(qint64(GetTickCount64() / 1000));
+    MEMORYSTATUSEX mem{};
+    mem.dwLength = sizeof mem;
+    if (GlobalMemoryStatusEx(&mem))
+        putIfSet(info, u"memory"_s, formatFreeOf(mem.ullAvailPhys, mem.ullTotalPhys));
+    QString drive = qEnvironmentVariable("SystemDrive");
+    if (drive.isEmpty())
+        drive = u"C:"_s;
+    const QString root = drive + u'\\';
+    ULARGE_INTEGER freeToUser{}, total{};
+    if (GetDiskFreeSpaceExW(reinterpret_cast<LPCWSTR>(root.utf16()), &freeToUser, &total, nullptr))
+        putIfSet(info, u"disk"_s, formatFreeOf(freeToUser.QuadPart, total.QuadPart, drive));
+#elif !defined(Q_OS_ANDROID) && !defined(Q_OS_IOS)
+#  if defined(Q_OS_MACOS)
+    timeval boot{};
+    size_t size = sizeof boot;
+    if (sysctlbyname("kern.boottime", &boot, &size, nullptr, 0) == 0 && boot.tv_sec > 0)
+        info[u"uptime"_s] = formatUptime(QDateTime::currentSecsSinceEpoch() - boot.tv_sec);
+    // Free, purgeable and speculative pages, as the node counts them: it
+    // leaves out inactive file cache, so it reads lower than Linux's figure.
+    quint64 total = 0, page = 0, free = 0, purgeable = 0, speculative = 0;
+    if (sysctlUint("hw.memsize", total) && sysctlUint("hw.pagesize", page)
+        && sysctlUint("vm.page_free_count", free)
+        && sysctlUint("vm.page_purgeable_count", purgeable)
+        && sysctlUint("vm.page_speculative_count", speculative))
+        putIfSet(info, u"memory"_s, formatFreeOf((free + purgeable + speculative) * page, total));
+#  else
+    QFile uptime(u"/proc/uptime"_s);
+    if (uptime.open(QIODevice::ReadOnly)) {
+        bool ok = false;
+        const double secs = QString::fromLatin1(uptime.readAll()).section(u' ', 0, 0).toDouble(&ok);
+        if (ok)
+            info[u"uptime"_s] = formatUptime(qint64(secs));
+    }
+    QFile meminfo(u"/proc/meminfo"_s);
+    if (meminfo.open(QIODevice::ReadOnly)) {
+        quint64 total = 0, available = 0;
+        const auto lines = QString::fromLatin1(meminfo.readAll()).split(u'\n');
+        for (const QString &line : lines) {
+            const QStringList f = line.simplified().split(u' ');
+            if (f.size() < 2)
+                continue;
+            if (f[0] == "MemTotal:"_L1)
+                total = f[1].toULongLong() * 1024;
+            else if (f[0] == "MemAvailable:"_L1)
+                available = f[1].toULongLong() * 1024;
+        }
+        if (available > 0)
+            putIfSet(info, u"memory"_s, formatFreeOf(available, total));
+    }
+#  endif
+    double load[3];
+    if (getloadavg(load, 3) == 3)
+        info[u"load"_s] = u"%1 %2 %3"_s.arg(load[0], 0, 'f', 2).arg(load[1], 0, 'f', 2)
+                              .arg(load[2], 0, 'f', 2);
+    struct statvfs fs {};
+    if (statvfs("/", &fs) == 0)
+        putIfSet(info, u"disk"_s,
+                 formatFreeOf(quint64(fs.f_bavail) * fs.f_frsize,
+                              quint64(fs.f_blocks) * fs.f_frsize, u"/"_s));
+#else
+    Q_UNUSED(info);
+#endif
+}
+
+} // namespace
+
 QVariantMap systemInfo()
 {
     QVariantMap info;
@@ -219,6 +357,7 @@ QVariantMap systemInfo()
             }
         }
     }
+    addHostTelemetry(info);
     return info;
 }
 
